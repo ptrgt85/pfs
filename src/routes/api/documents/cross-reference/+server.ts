@@ -6,10 +6,17 @@ import { eq, and } from 'drizzle-orm';
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { env } from '$env/dynamic/private';
-import { createCanvas } from 'canvas';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
+
+// Dynamic canvas import - may not be available on serverless
+let createCanvas: any;
+try {
+  createCanvas = require('canvas').createCanvas;
+} catch {
+  createCanvas = null;
+}
 
 const UPLOAD_DIR = 'static/uploads';
 const XAI_URL = 'https://api.x.ai/v1/chat/completions';

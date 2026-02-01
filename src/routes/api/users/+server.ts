@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/db';
 import { users, sessions, userAccess, roles, companies } from '$lib/db/schema';
 import { eq, and, gt, inArray } from 'drizzle-orm';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 // Helper to get current user from session
 async function getCurrentUser(cookies: any) {

@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/db';
 import { users, passwordResets, sessions } from '$lib/db/schema';
 import { eq, and, gt, isNull } from 'drizzle-orm';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
