@@ -24,7 +24,13 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
 
 // Convert PDF page to high-res PNG base64 (600 DPI equivalent for survey plans)
-async function pdfPageToImage(pdfBuffer: Buffer, pageNum: number = 1, scale: number = 4.0): Promise<string> {
+// Returns null if canvas is not available (serverless environment)
+async function pdfPageToImage(pdfBuffer: Buffer, pageNum: number = 1, scale: number = 4.0): Promise<string | null> {
+  if (!createCanvas) {
+    console.log('Canvas not available - cannot convert PDF to image');
+    return null;
+  }
+  
   const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
   
   const pdfData = new Uint8Array(pdfBuffer);
@@ -204,6 +210,9 @@ Return ONLY valid JSON:
         console.log(`Processing page ${pageNum}/${maxPages}...`);
         
         const imageBase64 = await pdfPageToImage(fileBuffer, pageNum, 4.0); // 600 DPI equivalent
+        if (!imageBase64) {
+          return json({ error: 'PDF cross-reference requires canvas (not available on serverless). Please use the Extract feature which supports serverless PDF processing.' }, { status: 400 });
+        }
         let content = '';
         
         // Use xAI Grok if explicitly selected

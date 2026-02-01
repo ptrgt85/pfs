@@ -21,7 +21,13 @@ try {
 const UPLOAD_DIR = 'static/uploads';
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
-async function pdfPageToImage(pdfBuffer: Buffer, pageNum: number = 1, scale: number = 4.0): Promise<string> {
+// Returns null if canvas is not available (serverless environment)
+async function pdfPageToImage(pdfBuffer: Buffer, pageNum: number = 1, scale: number = 4.0): Promise<string | null> {
+  if (!createCanvas) {
+    console.log('Canvas not available - cannot convert PDF to image');
+    return null;
+  }
+  
   const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
   
   const pdfData = new Uint8Array(pdfBuffer);
@@ -259,6 +265,9 @@ Return ONLY valid JSON:
         console.log(`Processing page ${pageNum}/${maxPages}...`);
         
         const imageBase64 = await pdfPageToImage(fileBuffer, pageNum, 4.0);
+        if (!imageBase64) {
+          return json({ error: 'POS analysis requires canvas (not available on serverless). Please use the Extract feature which supports serverless PDF processing.' }, { status: 400 });
+        }
         
         const geminiResponse = await fetch(`${GEMINI_URL}?key=${googleApiKey}`, {
           method: 'POST',

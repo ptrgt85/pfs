@@ -33,7 +33,13 @@ async function getPdfPageCount(pdfBuffer: Buffer): Promise<number> {
 }
 
 // Convert PDF page to high-res PNG base64 (600 DPI equivalent for engineering drawings)
-async function pdfPageToImage(pdfBuffer: Buffer, pageNum: number = 1, scale: number = 4.0): Promise<string> {
+// Returns null if canvas is not available (serverless environment)
+async function pdfPageToImage(pdfBuffer: Buffer, pageNum: number = 1, scale: number = 4.0): Promise<string | null> {
+  if (!createCanvas) {
+    console.log('Canvas not available - cannot convert PDF to image');
+    return null;
+  }
+  
   const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
   
   const pdfData = new Uint8Array(pdfBuffer);
@@ -76,6 +82,91 @@ interface ExtractionResult {
   stages?: ExtractedStage[];
   rawText?: string;
   summary?: string;
+}
+
+// Extract from PDF directly using Gemini (works without canvas)
+async function extractFromPdfWithGemini(pdfBuffer: Buffer, extractionType: 'stage' | 'precinct', hints: string = ''): Promise<ExtractionResult> {
+  const googleApiKey = env.GOOGLE_API_KEY;
+  if (!googleApiKey) {
+    return { lots: [], summary: 'GOOGLE_API_KEY required for PDF extraction on serverless' };
+  }
+  
+  const pdfBase64 = pdfBuffer.toString('base64');
+  
+  const stagePrompt = `You are analyzing a PERMIT PLAN or PLAN OF SUBDIVISION PDF. Extract ALL lot information visible.
+
+WHAT TO LOOK FOR:
+- Lot labels: "Lot 101", "101", "L101"
+- Area text: "500 m²", "500sqm", "0.050 ha" (convert ha to m² by multiplying by 10000)
+- Boundary lengths/dimensions
+- Road names to identify frontage side
+- Stage boundary lines and labels
+
+MEASUREMENT DEFINITIONS:
+- **Lot Number**: Exact identifier as shown
+- **Area**: Total lot area in m². Record the number only.
+- **Frontage**: The lot boundary that abuts a road reserve.
+- **Depth**: Distance from frontage to rear boundary.
+- **Street Name**: The road the primary frontage faces.
+
+Return ONLY valid JSON, no markdown:
+{"lots": [{"lotNumber": "101", "area": "450", "frontage": "15", "depth": "30", "streetName": "Main St"}], "summary": "Found X lots"}`;
+
+  const precinctPrompt = `You are analyzing a PERMIT PLAN PDF showing a MULTI-STAGE SUBDIVISION.
+
+WHAT TO EXTRACT:
+1. **Stage Information**: Stage names/numbers ("Stage 1", "Stage 61A")
+2. **For EACH lot within each stage**:
+   - Lot Number, Area (m²), Frontage (m), Depth (m), Street Name
+
+CRITICAL: Extract EVERY individual lot with its data. Do NOT just list stage summaries.
+
+Return ONLY valid JSON:
+{"stages": [{"stageName": "Stage 1", "stageNumber": "1", "lots": [{"lotNumber": "101", "area": "450", "frontage": "15", "depth": "30", "streetName": "Main St"}]}], "summary": "X stages, Y total lots"}`;
+
+  let prompt = extractionType === 'precinct' ? precinctPrompt : stagePrompt;
+  if (hints && hints.trim()) {
+    prompt = `USER CONTEXT: ${hints}\n\n${prompt}`;
+  }
+
+  console.log('Sending PDF directly to Gemini (canvas not available)...');
+  
+  const geminiResponse = await fetch(`${GEMINI_URL}?key=${googleApiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: 'application/pdf', data: pdfBase64 } }
+        ]
+      }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 32768 }
+    })
+  });
+  
+  if (!geminiResponse.ok) {
+    const errorText = await geminiResponse.text();
+    console.error('Gemini PDF API error:', geminiResponse.status, errorText);
+    return { lots: [], summary: `Gemini API error: ${geminiResponse.status}` };
+  }
+  
+  const geminiResult = await geminiResponse.json();
+  const content = geminiResult.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  
+  // Parse JSON from response
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      parsed.summary = (parsed.summary || '') + ' [Gemini PDF direct]';
+      return parsed;
+    }
+  } catch (e) {
+    console.error('Failed to parse Gemini response:', e);
+  }
+  
+  return { lots: [], summary: 'Failed to parse extraction result' };
 }
 
 async function extractWithAI(imageBase64: string, mimeType: string, extractionType: 'stage' | 'precinct' = 'stage', model: string = 'gemini', continueFrom: string[] = [], excludeStages: string[] = [], hints: string = ''): Promise<ExtractionResult> {
@@ -523,6 +614,23 @@ export const POST: RequestHandler = async ({ request }) => {
   // If PDF, process ALL pages and combine results
   if (doc.mimeType === 'application/pdf') {
     try {
+      // Check if canvas is available for PDF-to-image conversion
+      if (!createCanvas) {
+        // Canvas not available (serverless) - send PDF directly to Gemini
+        console.log('Canvas not available - using Gemini PDF direct extraction');
+        const extractedData = await extractFromPdfWithGemini(fileBuffer, extractionType, hints);
+        
+        // Update document with extracted data
+        await db.update(documents)
+          .set({ 
+            extractedData: JSON.stringify(extractedData),
+            aiProcessed: new Date()
+          })
+          .where(eq(documents.id, documentId));
+        
+        return json({ ...extractedData, pageCount: 1 });
+      }
+      
       const pageCount = await getPdfPageCount(fileBuffer);
       console.log(`PDF has ${pageCount} pages. Processing all pages for extraction...`);
       
@@ -531,6 +639,10 @@ export const POST: RequestHandler = async ({ request }) => {
       for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
         console.log(`Processing page ${pageNum}/${pageCount}...`);
         const base64 = await pdfPageToImage(fileBuffer, pageNum, 4.0);
+        if (!base64) {
+          console.log('Failed to convert PDF page to image');
+          continue;
+        }
         const pageResult = await extractWithAI(base64, 'image/png', extractionType, model, continueFrom, excludeStages, hints);
         
         // Only add if we got meaningful results
