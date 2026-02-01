@@ -293,6 +293,16 @@
   let editValues: Record<string, string> = {};
   let isAdding = false;
   let newRowValues: Record<string, string> = {};
+  
+  // Loading states for save operations
+  let savingRow = false;
+  let savingAdd = false;
+  let savingProperty = false;
+  let savingExtraction = false;
+  let savingForecast = false;
+  let savingDates = false;
+  let savingLandBudget = false;
+  let deletingRow: number | null = null;
   let sortColumn: string = '';
   let sortDirection: 'asc' | 'desc' = 'asc';
   let entityDetails: any = null;
@@ -1161,7 +1171,8 @@
   }
   
   async function saveStageLandBudget() {
-    if (!selectedNode || selectedNode.type !== 'stage') return;
+    if (!selectedNode || selectedNode.type !== 'stage' || savingLandBudget) return;
+    savingLandBudget = true;
     
     const items: any[] = [];
     for (const [key, value] of stageLandBudgetEditValues) {
@@ -1217,6 +1228,8 @@
     } catch (e) {
       console.error('Failed to save land budget:', e);
       log('Failed to save land budget', 'error');
+    } finally {
+      savingLandBudget = false;
     }
   }
   
@@ -1756,6 +1769,8 @@
 
   // Save forecast to lots - handles reallocation (unassign from decreased, assign to increased)
   async function saveForecast() {
+    if (savingForecast) return;
+    savingForecast = true;
     let updated = 0;
     let failed = 0;
     
@@ -1871,6 +1886,7 @@
     }
     
     forecastEditMode = false;
+    savingForecast = false;
     
     if (updated === 0 && failed === 0) {
       log(`No changes to save (lots may already be assigned)`, 'info');
@@ -3155,7 +3171,8 @@
   }
   
   async function savePropertyEdit() {
-    if (!selectedNode || !editingProperty) return;
+    if (!selectedNode || !editingProperty || savingProperty) return;
+    savingProperty = true;
     const endpoint = entityEndpoints[selectedNode.type];
     
     // Handle date fields - convert to ISO timestamp
@@ -3183,6 +3200,8 @@
       }
     } catch (e) {
       log('Update error', 'error');
+    } finally {
+      savingProperty = false;
     }
     editingProperty = null;
   }
@@ -3692,7 +3711,7 @@
   
   // Save extracted stages and lots from Permit Plan
   async function saveExtractedStages() {
-    if (!selectedNode || !extractionResult?.stages) {
+    if (!selectedNode || !extractionResult?.stages || savingExtraction) {
       log('No stages to save', 'error');
       return;
     }
@@ -3702,6 +3721,7 @@
       return;
     }
     
+    savingExtraction = true;
     log('Creating stages and lots...', 'loading');
     let stagesCreated = 0;
     let lotsCreated = 0;
@@ -3774,12 +3794,13 @@
       log(`Failed to create stages (${errors} errors)`, 'error');
     }
     
+    savingExtraction = false;
     showExtractionModal = false;
     extractionResult = null;
   }
   
   async function saveExtractedLots() {
-    if (!selectedNode || !extractionResult?.lots) {
+    if (!selectedNode || !extractionResult?.lots || savingExtraction) {
       log('No data to save', 'error');
       return;
     }
@@ -3789,6 +3810,7 @@
       return;
     }
     
+    savingExtraction = true;
     log('Saving extracted lots...', 'loading');
     let updated = 0;
     let created = 0;
@@ -3861,6 +3883,7 @@
       log(`Failed to save lots (${errors} errors)`, 'error');
     }
     
+    savingExtraction = false;
     showExtractionModal = false;
     extractionResult = null;
     
@@ -4510,7 +4533,8 @@
   }
   
   async function saveEdit(row: any) {
-    if (!selectedNode) return;
+    if (!selectedNode || savingRow) return;
+    savingRow = true;
     const config = typeConfig[selectedNode.type];
     
     const updateData: any = { id: row.id };
@@ -4592,12 +4616,15 @@
       }
     } catch (e) {
       log('Update error', 'error');
+    } finally {
+      savingRow = false;
     }
     editingId = null;
   }
   
   async function deleteRow(row: any) {
-    if (!selectedNode) return;
+    if (!selectedNode || deletingRow !== null) return;
+    deletingRow = row.id;
     const config = typeConfig[selectedNode.type];
     
     try {
@@ -4614,6 +4641,8 @@
       }
     } catch (e) {
       log('Delete error', 'error');
+    } finally {
+      deletingRow = null;
     }
   }
   
@@ -4628,7 +4657,8 @@
   }
   
   async function saveAdd() {
-    if (!selectedNode) return;
+    if (!selectedNode || savingAdd) return;
+    savingAdd = true;
     const config = typeConfig[selectedNode.type];
     
     const newData: any = { [config.childKey]: selectedNode.id };
@@ -4674,6 +4704,8 @@
       }
     } catch (e) {
       log('Create error', 'error');
+    } finally {
+      savingAdd = false;
     }
     isAdding = false;
     newRowValues = {};
@@ -4811,8 +4843,10 @@
                 <span class="property-label">{field.label}:</span>
                 {#if editingProperty === field.key}
                   <input type="text" class="property-input" bind:value={propertyEditValue} />
-                  <button class="btn-save" on:click={savePropertyEdit}>Save</button>
-                  <button class="btn-cancel" on:click={cancelPropertyEdit}>Cancel</button>
+                  <button class="btn-save" on:click={savePropertyEdit} disabled={savingProperty}>
+                    {savingProperty ? 'Saving...' : 'Save'}
+                  </button>
+                  <button class="btn-cancel" on:click={cancelPropertyEdit} disabled={savingProperty}>Cancel</button>
                 {:else}
                   <span class="property-value">{entityDetails[field.key] || '-'}</span>
                   <button class="btn-edit" on:click={() => startPropertyEdit(field.key)}>Edit</button>
@@ -4825,8 +4859,10 @@
                 <span class="property-label">Registration Date:</span>
                 {#if editingProperty === 'registrationDate'}
                   <input type="date" class="property-input date-input" bind:value={propertyEditValue} />
-                  <button class="btn-save" on:click={savePropertyEdit}>Save</button>
-                  <button class="btn-cancel" on:click={cancelPropertyEdit}>Cancel</button>
+                  <button class="btn-save" on:click={savePropertyEdit} disabled={savingProperty}>
+                    {savingProperty ? 'Saving...' : 'Save'}
+                  </button>
+                  <button class="btn-cancel" on:click={cancelPropertyEdit} disabled={savingProperty}>Cancel</button>
                 {:else}
                   <span class="property-value date-value registration">{entityDetails.registrationDate ? new Date(entityDetails.registrationDate).toLocaleDateString() : '-'}</span>
                   <button class="btn-edit" on:click={() => startPropertyEdit('registrationDate')}>Edit</button>
@@ -5788,8 +5824,10 @@
 
               <div class="forecast-actions">
                 {#if forecastEditMode}
-                  <button class="btn-cancel" on:click={() => { forecastEditMode = false; loadForecastData(); }}>Cancel</button>
-                  <button class="btn-save" on:click={saveForecast}>Save</button>
+                  <button class="btn-cancel" on:click={() => { forecastEditMode = false; loadForecastData(); }} disabled={savingForecast}>Cancel</button>
+                  <button class="btn-save" on:click={saveForecast} disabled={savingForecast}>
+                    {savingForecast ? 'Saving...' : 'Save'}
+                  </button>
                 {:else}
                   <button class="btn-edit" on:click={startForecastEdit}>Edit</button>
                 {/if}
@@ -6128,8 +6166,10 @@
             <div class="lot-area-check"></div>
             <div class="land-budget-controls">
               {#if stageLandBudgetEditMode}
-                <button class="btn-save" on:click={saveStageLandBudget}>Save</button>
-                <button class="btn-cancel" on:click={cancelStageLandBudgetEdit}>Cancel</button>
+                <button class="btn-save" on:click={saveStageLandBudget} disabled={savingLandBudget}>
+                  {savingLandBudget ? 'Saving...' : 'Save'}
+                </button>
+                <button class="btn-cancel" on:click={cancelStageLandBudgetEdit} disabled={savingLandBudget}>Cancel</button>
               {:else if userCanEdit}
                 <button class="btn-edit" on:click={() => stageLandBudgetEditMode = true}>Edit</button>
               {/if}
@@ -6895,8 +6935,10 @@
                     </td>
                   {/each}
                   <td class="actions-col td-sticky-right">
-                    <button class="btn-save" on:click={saveAdd}>Save</button>
-                    <button class="btn-cancel" on:click={cancelAdd}>Cancel</button>
+                    <button class="btn-save" on:click={saveAdd} disabled={savingAdd}>
+                      {savingAdd ? 'Saving...' : 'Save'}
+                    </button>
+                    <button class="btn-cancel" on:click={cancelAdd} disabled={savingAdd}>Cancel</button>
                   </td>
                 </tr>
               {/if}
@@ -6947,8 +6989,10 @@
                       </td>
                     {/each}
                     <td class="actions-col td-sticky-right">
-                      <button class="btn-save" on:click={() => saveEdit(row)}>Save</button>
-                      <button class="btn-cancel" on:click={cancelEdit}>Cancel</button>
+                      <button class="btn-save" on:click={() => saveEdit(row)} disabled={savingRow}>
+                        {savingRow ? 'Saving...' : 'Save'}
+                      </button>
+                      <button class="btn-cancel" on:click={cancelEdit} disabled={savingRow}>Cancel</button>
                     </td>
                   {:else}
                     {#each orderedFields as field}
@@ -7018,7 +7062,9 @@
                         <button class="btn-edit" on:click={() => startEdit(row)}>Edit</button>
                       {/if}
                       {#if userCanDelete}
-                        <button class="btn-delete" on:click={() => deleteRow(row)}>Del</button>
+                        <button class="btn-delete" on:click={() => deleteRow(row)} disabled={deletingRow === row.id}>
+                          {deletingRow === row.id ? '...' : 'Del'}
+                        </button>
                       {/if}
                       {#if !userCanEdit && !userCanDelete}
                         <span class="view-only-badge">View Only</span>
@@ -7179,17 +7225,17 @@
         {/if}
       </div>
       <div class="modal-footer">
-        <button class="btn-cancel" on:click={() => showExtractionModal = false}>Cancel</button>
+        <button class="btn-cancel" on:click={() => showExtractionModal = false} disabled={savingExtraction}>Cancel</button>
         {#if extractionResult.stages?.length > 0}
           {@const stageCount = extractionResult.stages.filter((s: any) => s.action !== 'skip').length}
           {@const lotCount = extractionResult.stages.filter((s: any) => s.action !== 'skip').reduce((sum: number, s: any) => sum + (s.lots?.length || 0), 0)}
-          <button class="btn-save" on:click={saveExtractedStages} disabled={stageCount === 0}>
-            Create {stageCount} Stages ({lotCount} lots)
+          <button class="btn-save" on:click={saveExtractedStages} disabled={stageCount === 0 || savingExtraction}>
+            {savingExtraction ? 'Creating...' : `Create ${stageCount} Stages (${lotCount} lots)`}
           </button>
         {:else if extractionResult.lots?.length > 0}
           {@const actionCount = extractionResult.lots.filter((l: any) => l.action !== 'skip').length}
-          <button class="btn-save" on:click={saveExtractedLots} disabled={actionCount === 0}>
-            Apply {actionCount} Changes
+          <button class="btn-save" on:click={saveExtractedLots} disabled={actionCount === 0 || savingExtraction}>
+            {savingExtraction ? 'Applying...' : `Apply ${actionCount} Changes`}
           </button>
         {/if}
       </div>
