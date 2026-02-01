@@ -50,12 +50,16 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
   // Hash password
   const passwordHash = await bcrypt.hash(password, 10);
   
+  // Check if this is the first user (make them admin)
+  const existingUsers = await db.select({ id: users.id }).from(users).limit(1);
+  const isFirstUser = existingUsers.length === 0;
+  
   // Create user
   const [newUser] = await db.insert(users).values({
     email: email.toLowerCase(),
     passwordHash,
     name,
-    isMaster: 0
+    isMaster: isFirstUser ? 1 : 0
   }).returning();
   
   // If invitation, grant access and mark as accepted
@@ -96,7 +100,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
       id: newUser.id,
       email: newUser.email,
       name: newUser.name,
-      isMaster: false
+      isMaster: isFirstUser
     }
   });
 };
