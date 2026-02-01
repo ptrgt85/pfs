@@ -4722,7 +4722,7 @@
 <div class="app">
   <div class="header">
     <span class="title">◆ Filing System</span>
-    <span class="subtitle">Navigate hierarchy below</span>
+    <span class="subtitle">v{__VERSION__}</span>
     <div class="user-section">
       <button class="user-btn" on:click={() => showUserMenu = !showUserMenu}>
         <span class="user-avatar">{currentUser.name.charAt(0).toUpperCase()}</span>
