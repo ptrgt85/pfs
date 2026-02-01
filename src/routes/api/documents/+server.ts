@@ -29,16 +29,32 @@ export const POST: RequestHandler = async ({ request }) => {
     const entityType = formData.get('entityType') as string;
     const entityId = parseInt(formData.get('entityId') as string);
     const documentType = (formData.get('documentType') as string) || 'other';
-    
+
+    console.log('Upload request:', {
+      fileName: file?.name,
+      entityType,
+      entityId,
+      documentType,
+      hasToken: !!process.env.BLOB_READ_WRITE_TOKEN
+    });
+
     if (!file || !entityType || !entityId) {
       return json({ error: 'Missing required fields' }, { status: 400 });
     }
-    
+
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      console.error('BLOB_READ_WRITE_TOKEN is not set');
+      return json({ error: 'Server configuration error: Missing blob storage token' }, { status: 500 });
+    }
+
     // Upload to Vercel Blob
+    console.log('Uploading to Vercel Blob...');
     const blob = await put(file.name, file, {
       access: 'public',
+      token: process.env.BLOB_READ_WRITE_TOKEN,
     });
-    
+    console.log('Upload successful:', blob.url);
+
     // Save to database with blob URL
     const [newDoc] = await db.insert(documents).values({
       entityType,
@@ -49,11 +65,18 @@ export const POST: RequestHandler = async ({ request }) => {
       size: file.size,
       documentType
     }).returning();
-    
+
     return json(newDoc);
   } catch (error: any) {
-    console.error('Upload error:', error);
-    return json({ error: error.message || 'Upload failed' }, { status: 500 });
+    console.error('Upload error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    return json({
+      error: error.message || 'Upload failed',
+      details: error.toString()
+    }, { status: 500 });
   }
 };
 
