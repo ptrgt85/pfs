@@ -111,13 +111,26 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'Document must be a PDF or provide a screenshot' }, { status: 400 });
     }
     
-    // Read and convert PDF page to image
-    const filepath = path.join(UPLOAD_DIR, doc.filename);
+    // Read file from Vercel Blob URL or local path
     let fileBuffer;
     try {
-      fileBuffer = await readFile(filepath);
-    } catch (e) {
-      return json({ error: 'Could not read file' }, { status: 500 });
+      if (doc.filename.startsWith('http://') || doc.filename.startsWith('https://')) {
+        // Fetch from Vercel Blob
+        console.log('Fetching file from Vercel Blob:', doc.filename);
+        const response = await fetch(doc.filename);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch file: ${response.statusText}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        fileBuffer = Buffer.from(arrayBuffer);
+      } else {
+        // Legacy: Read from local filesystem
+        const filepath = path.join(UPLOAD_DIR, doc.filename);
+        fileBuffer = await readFile(filepath);
+      }
+    } catch (e: any) {
+      console.error('File read error:', e);
+      return json({ error: `Could not read file: ${e.message}` }, { status: 500 });
     }
     
     try {
