@@ -23,33 +23,38 @@ export const GET: RequestHandler = async ({ url }) => {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
-  const formData = await request.formData();
-  const file = formData.get('file') as File;
-  const entityType = formData.get('entityType') as string;
-  const entityId = parseInt(formData.get('entityId') as string);
-  const documentType = (formData.get('documentType') as string) || 'other';
-  
-  if (!file || !entityType || !entityId) {
-    return json({ error: 'Missing required fields' }, { status: 400 });
+  try {
+    const formData = await request.formData();
+    const file = formData.get('file') as File;
+    const entityType = formData.get('entityType') as string;
+    const entityId = parseInt(formData.get('entityId') as string);
+    const documentType = (formData.get('documentType') as string) || 'other';
+    
+    if (!file || !entityType || !entityId) {
+      return json({ error: 'Missing required fields' }, { status: 400 });
+    }
+    
+    // Upload to Vercel Blob
+    const blob = await put(file.name, file, {
+      access: 'public',
+    });
+    
+    // Save to database with blob URL
+    const [newDoc] = await db.insert(documents).values({
+      entityType,
+      entityId,
+      filename: blob.url,
+      originalName: file.name,
+      mimeType: file.type,
+      size: file.size,
+      documentType
+    }).returning();
+    
+    return json(newDoc);
+  } catch (error: any) {
+    console.error('Upload error:', error);
+    return json({ error: error.message || 'Upload failed' }, { status: 500 });
   }
-  
-  // Upload to Vercel Blob
-  const blob = await put(file.name, file, {
-    access: 'public',
-  });
-  
-  // Save to database with blob URL
-  const [newDoc] = await db.insert(documents).values({
-    entityType,
-    entityId,
-    filename: blob.url,
-    originalName: file.name,
-    mimeType: file.type,
-    size: file.size,
-    documentType
-  }).returning();
-  
-  return json(newDoc);
 };
 
 export const DELETE: RequestHandler = async ({ request }) => {
