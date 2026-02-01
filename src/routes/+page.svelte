@@ -5275,14 +5275,14 @@
           <div class="inline-viewer-container" style="height: {inlineViewerHeight}px;">
             {#if inlineDocument.mimeType === 'application/pdf'}
               <iframe 
-                src="/uploads/{inlineDocument.filename}" 
+                src="{inlineDocument.filename}" 
                 title={inlineDocument.originalName}
                 class="inline-viewer-pdf"
               ></iframe>
             {:else}
               <div class="inline-viewer-scroll">
                 <img 
-                  src="/uploads/{inlineDocument.filename}" 
+                  src="{inlineDocument.filename}" 
                   alt={inlineDocument.originalName} 
                   class="inline-viewer-image"
                   style="transform: scale({inlineZoom}); transform-origin: top left;"
@@ -7336,15 +7336,15 @@
       </div>
       <div class="modal-body preview-body">
         {#if previewDocument.mimeType?.startsWith('image/')}
-          <img src="/uploads/{previewDocument.filename}" alt={previewDocument.originalName} class="preview-image" />
+          <img src="{previewDocument.filename}" alt={previewDocument.originalName} class="preview-image" />
         {:else if previewDocument.mimeType === 'application/pdf'}
-          <iframe src="/uploads/{previewDocument.filename}" title={previewDocument.originalName} class="preview-pdf"></iframe>
+          <iframe src="{previewDocument.filename}" title={previewDocument.originalName} class="preview-pdf"></iframe>
         {:else}
           <div class="preview-unsupported">Preview not available for this file type</div>
         {/if}
       </div>
       <div class="modal-footer">
-        <a href="/uploads/{previewDocument.filename}" download={previewDocument.originalName} class="btn-download">Download</a>
+        <a href="{previewDocument.filename}" download={previewDocument.originalName} class="btn-download">Download</a>
         <button class="btn-cancel" on:click={() => previewDocument = null}>Close</button>
       </div>
     </div>
