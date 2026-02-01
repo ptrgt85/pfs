@@ -3,11 +3,7 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/db';
 import { documents } from '$lib/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
-
-const UPLOAD_DIR = 'static/uploads';
+import { put, del } from '@vercel/blob';
 
 export const GET: RequestHandler = async ({ url }) => {
   const entityType = url.searchParams.get('entityType');
@@ -37,25 +33,16 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'Missing required fields' }, { status: 400 });
   }
   
-  // Ensure upload directory exists
-  if (!existsSync(UPLOAD_DIR)) {
-    await mkdir(UPLOAD_DIR, { recursive: true });
-  }
+  // Upload to Vercel Blob
+  const blob = await put(file.name, file, {
+    access: 'public',
+  });
   
-  // Generate unique filename
-  const ext = path.extname(file.name);
-  const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}${ext}`;
-  const filepath = path.join(UPLOAD_DIR, filename);
-  
-  // Write file
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(filepath, buffer);
-  
-  // Save to database
+  // Save to database with blob URL
   const [newDoc] = await db.insert(documents).values({
     entityType,
     entityId,
-    filename,
+    filename: blob.url,
     originalName: file.name,
     mimeType: file.type,
     size: file.size,
@@ -67,6 +54,19 @@ export const POST: RequestHandler = async ({ request }) => {
 
 export const DELETE: RequestHandler = async ({ request }) => {
   const { id } = await request.json();
+  
+  // Get document to find blob URL
+  const [doc] = await db.select().from(documents).where(eq(documents.id, id));
+  
+  if (doc && doc.filename) {
+    // Delete from Vercel Blob
+    try {
+      await del(doc.filename);
+    } catch (e) {
+      // Ignore blob deletion errors (file may not exist)
+    }
+  }
+  
   await db.delete(documents).where(eq(documents.id, id));
   return json({ success: true });
 };
