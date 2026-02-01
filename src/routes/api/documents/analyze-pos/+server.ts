@@ -145,7 +145,10 @@ export const POST: RequestHandler = async ({ request }) => {
       const arrayBuffer = await response.arrayBuffer();
       fileBuffer = Buffer.from(arrayBuffer);
     } else {
-      // Legacy: Read from local filesystem
+      // Legacy: Local filesystem - won't work on serverless
+      if (!createCanvas) {
+        return json({ error: 'This document was uploaded before cloud storage was enabled. Please delete and re-upload the document.' }, { status: 400 });
+      }
       const filepath = path.join(UPLOAD_DIR, doc.filename);
       fileBuffer = await readFile(filepath);
     }

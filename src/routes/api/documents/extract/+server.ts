@@ -607,8 +607,18 @@ export const POST: RequestHandler = async ({ request }) => {
       fileBuffer = Buffer.from(arrayBuffer);
       console.log('File fetched successfully, size:', fileBuffer.length, 'bytes');
     } else {
-      // Legacy: Read from local filesystem
-      console.log('Reading from local filesystem:', doc.filename);
+      // Legacy: Local filesystem - won't work on serverless
+      console.log('Document has local filename (not Blob URL):', doc.filename);
+      
+      // Check if we're likely on serverless (canvas not available is a good indicator)
+      if (!createCanvas) {
+        return json({
+          error: 'This document was uploaded before cloud storage was enabled. Please delete and re-upload the document.',
+          filename: doc.filename
+        }, { status: 400 });
+      }
+      
+      // Try local read (only works in dev)
       const filepath = path.join(UPLOAD_DIR, doc.filename);
       fileBuffer = await readFile(filepath);
     }
