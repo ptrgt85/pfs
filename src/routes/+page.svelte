@@ -3227,10 +3227,11 @@
         log('Document uploaded', 'success');
         input.value = '';
       } else {
-        log('Upload failed', 'error');
+        const errData = await res.json().catch(() => ({}));
+        log(`Upload failed: ${errData.error || res.statusText}`, 'error');
       }
-    } catch (e) {
-      log('Upload error', 'error');
+    } catch (e: any) {
+      log(`Upload error: ${e.message}`, 'error');
     }
     uploading = false;
   }
