@@ -587,6 +587,14 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'Document not found' }, { status: 404 });
   }
   
+  console.log('Document info:', {
+    id: doc.id,
+    filename: doc.filename,
+    originalName: doc.originalName,
+    mimeType: doc.mimeType,
+    isUrl: doc.filename?.startsWith('http')
+  });
+  
   // Read file from Vercel Blob URL
   let fileBuffer;
   try {
@@ -632,6 +640,8 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({
       error: `Could not read file: ${e.message}`,
       filename: doc.filename,
+      isUrl: doc.filename?.startsWith('http'),
+      documentId: doc.id,
       details: e.toString()
     }, { status: 500 });
   }

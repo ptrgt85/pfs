@@ -3447,7 +3447,8 @@
         showExtractionModal = true;
       } else {
         const errData = await res.json();
-        log(`Extraction failed: ${errData.error || 'Unknown error'}`, 'error');
+        const details = errData.filename ? ` [file: ${errData.filename}, isUrl: ${errData.isUrl}]` : '';
+        log(`Extraction failed: ${errData.error || 'Unknown error'}${details}`, 'error');
       }
     } catch (e: any) {
       clearInterval(progressInterval);
