@@ -1,0 +1,378 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import DataTable from '$lib/components/DataTable.svelte';
+  
+  type Level = 'companies' | 'projects' | 'precincts' | 'stages' | 'stage-items' | 'lots' | 'subgroups';
+  
+  interface BreadcrumbItem {
+    level: Level;
+    id: number | null;
+    name: string;
+  }
+  
+  let currentLevel: Level = 'companies';
+  let currentParentId: number | null = null;
+  let breadcrumb: BreadcrumbItem[] = [{ level: 'companies', id: null, name: 'Companies' }];
+  let data: any[] = [];
+  let columns: any[] = [];
+  let loading = false;
+  let activityLog: Array<{time: string, message: string, type: string}> = [];
+  
+  const levelConfig: Record<Level, {
+    endpoint: string;
+    parentKey: string;
+    columns: any[];
+    childLevel: Level | null;
+    title: string;
+  }> = {
+    'companies': {
+      endpoint: '/api/companies',
+      parentKey: '',
+      columns: [
+        { key: 'id', label: 'ID', width: 60 },
+        { key: 'name', label: 'Name', editable: true, width: 200 },
+        { key: 'abn', label: 'ABN', editable: true, width: 120 },
+        { key: 'owners', label: 'Owners', editable: true, width: 150 }
+      ],
+      childLevel: 'projects',
+      title: 'Companies'
+    },
+    'projects': {
+      endpoint: '/api/projects',
+      parentKey: 'companyId',
+      columns: [
+        { key: 'id', label: 'ID', width: 60 },
+        { key: 'name', label: 'Name', editable: true, width: 200 },
+        { key: 'description', label: 'Description', editable: true, width: 300 }
+      ],
+      childLevel: 'precincts',
+      title: 'Projects'
+    },
+    'precincts': {
+      endpoint: '/api/precincts',
+      parentKey: 'projectId',
+      columns: [
+        { key: 'id', label: 'ID', width: 60 },
+        { key: 'name', label: 'Name', editable: true, width: 200 },
+        { key: 'description', label: 'Description', editable: true, width: 300 }
+      ],
+      childLevel: 'stages',
+      title: 'Precincts'
+    },
+    'stages': {
+      endpoint: '/api/stages',
+      parentKey: 'precinctId',
+      columns: [
+        { key: 'id', label: 'ID', width: 60 },
+        { key: 'name', label: 'Name', editable: true, width: 200 },
+        { key: 'description', label: 'Description', editable: true, width: 300 }
+      ],
+      childLevel: 'lots',
+      title: 'Stages'
+    },
+    'stage-items': {
+      endpoint: '',
+      parentKey: 'stageId',
+      columns: [
+        { key: 'type', label: 'Type', width: 80 },
+        { key: 'id', label: 'ID', width: 60 },
+        { key: 'name', label: 'Name', editable: true, width: 200 },
+        { key: 'status', label: 'Status', editable: true, width: 100 }
+      ],
+      childLevel: null,
+      title: 'Stage Items'
+    },
+    'lots': {
+      endpoint: '/api/lots',
+      parentKey: 'stageId',
+      columns: [
+        { key: 'id', label: 'ID', width: 60 },
+        { key: 'lotNumber', label: 'Lot #', editable: true, width: 100 },
+        { key: 'address', label: 'Address', editable: true, width: 200 },
+        { key: 'status', label: 'Status', editable: true, width: 100 }
+      ],
+      childLevel: 'subgroups',
+      title: 'Lots'
+    },
+    'subgroups': {
+      endpoint: '/api/lot-subgroups',
+      parentKey: 'lotId',
+      columns: [
+        { key: 'id', label: 'ID', width: 60 },
+        { key: 'name', label: 'Name', editable: true, width: 200 },
+        { key: 'description', label: 'Description', editable: true, width: 300 }
+      ],
+      childLevel: null,
+      title: 'Subgroups'
+    }
+  };
+  
+  onMount(() => {
+    loadData();
+  });
+  
+  function log(message: string, type: string = 'info') {
+    const time = new Date().toLocaleTimeString();
+    activityLog = [...activityLog, {time, message, type}].slice(-30);
+  }
+  
+  async function loadData() {
+    loading = true;
+    const config = levelConfig[currentLevel];
+    const start = Date.now();
+    log(`Loading ${config.title}...`, 'loading');
+    
+    try {
+      let url = config.endpoint;
+      if (currentParentId !== null && config.parentKey) {
+        url += `?${config.parentKey}=${currentParentId}`;
+      }
+      
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      data = await response.json();
+      columns = config.columns;
+      
+      log(`Loaded ${data.length} ${config.title.toLowerCase()} in ${Date.now() - start}ms`, 'success');
+    } catch (error) {
+      log(`Error: ${error}`, 'error');
+      data = [];
+    } finally {
+      loading = false;
+    }
+  }
+  
+  function handleRowClick(row: any) {
+    const config = levelConfig[currentLevel];
+    if (!config.childLevel) return;
+    
+    const name = row.name || row.lotNumber || `ID ${row.id}`;
+    log(`Opening ${name}`, 'info');
+    
+    breadcrumb = [...breadcrumb, { 
+      level: config.childLevel, 
+      id: row.id, 
+      name 
+    }];
+    currentLevel = config.childLevel;
+    currentParentId = row.id;
+    loadData();
+  }
+  
+  function navigateTo(index: number) {
+    const item = breadcrumb[index];
+    breadcrumb = breadcrumb.slice(0, index + 1);
+    currentLevel = item.level;
+    currentParentId = item.id;
+    log(`Navigating to ${item.name}`, 'info');
+    loadData();
+  }
+  
+  async function handleUpdate(id: number, field: string, value: any) {
+    const config = levelConfig[currentLevel];
+    try {
+      const response = await fetch(config.endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, [field]: value })
+      });
+      if (response.ok) {
+        const item = data.find(d => d.id === id);
+        if (item) item[field] = value;
+        data = [...data];
+        log(`Updated ${field}`, 'success');
+      } else {
+        log('Update failed', 'error');
+      }
+    } catch (error) {
+      log(`Error: ${error}`, 'error');
+    }
+  }
+  
+  async function handleDelete(id: number) {
+    const config = levelConfig[currentLevel];
+    try {
+      const response = await fetch(config.endpoint, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      if (response.ok) {
+        data = data.filter(d => d.id !== id);
+        log('Deleted', 'success');
+      } else {
+        log('Delete failed', 'error');
+      }
+    } catch (error) {
+      log(`Error: ${error}`, 'error');
+    }
+  }
+  
+  async function handleAdd(newData: any) {
+    const config = levelConfig[currentLevel];
+    const body = { ...newData };
+    if (currentParentId !== null && config.parentKey) {
+      body[config.parentKey] = currentParentId;
+    }
+    
+    try {
+      const response = await fetch(config.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (response.ok) {
+        const newItem = await response.json();
+        data = [...data, newItem];
+        log('Created', 'success');
+      } else {
+        log('Create failed', 'error');
+      }
+    } catch (error) {
+      log(`Error: ${error}`, 'error');
+    }
+  }
+</script>
+
+<div class="app">
+  <header>
+    <div class="title">FILING SYSTEM</div>
+    <div class="breadcrumb">
+      {#each breadcrumb as item, i}
+        {#if i > 0}<span class="sep">/</span>{/if}
+        <button 
+          class="crumb" 
+          class:active={i === breadcrumb.length - 1}
+          on:click={() => navigateTo(i)}
+        >
+          {item.name}
+        </button>
+      {/each}
+    </div>
+  </header>
+  
+  <main>
+    {#if loading}
+      <div class="loading">Loading...</div>
+    {:else}
+      <DataTable 
+        {columns}
+        {data}
+        onUpdate={handleUpdate}
+        onDelete={handleDelete}
+        onAdd={handleAdd}
+        onRowClick={handleRowClick}
+        showActions={true}
+      />
+    {/if}
+  </main>
+  
+  <footer>
+    <div class="log-title">[LOG]</div>
+    <div class="log-entries">
+      {#each activityLog.slice().reverse() as entry}
+        <span class="log-entry log-{entry.type}">[{entry.time}] {entry.message}</span>
+      {/each}
+    </div>
+  </footer>
+</div>
+
+<style>
+  .app {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: #0a0a0a;
+    color: #ccc;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+  }
+  
+  header {
+    padding: 12px 20px;
+    border-bottom: 1px solid #333;
+    background: #000;
+  }
+  
+  .title {
+    color: #00ff00;
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 8px;
+  }
+  
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .sep {
+    color: #444;
+  }
+  
+  .crumb {
+    background: none;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: inherit;
+  }
+  
+  .crumb:hover {
+    color: #00ffff;
+  }
+  
+  .crumb.active {
+    color: #00ff00;
+    font-weight: bold;
+  }
+  
+  main {
+    flex: 1;
+    overflow: auto;
+    padding: 16px 20px;
+    min-height: 0;
+  }
+  
+  .loading {
+    color: #ffff00;
+    padding: 40px;
+    text-align: center;
+  }
+  
+  footer {
+    height: 100px;
+    border-top: 1px solid #333;
+    background: #000;
+    padding: 8px 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .log-title {
+    color: #00ffff;
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+  
+  .log-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  
+  .log-entry {
+    font-size: 11px;
+    color: #666;
+  }
+  
+  .log-entry.log-success { color: #00ff00; }
+  .log-entry.log-error { color: #ff0000; }
+  .log-entry.log-loading { color: #ffff00; }
+  .log-entry.log-info { color: #00ffff; }
+</style>
