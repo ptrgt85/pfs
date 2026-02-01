@@ -595,20 +595,35 @@ export const POST: RequestHandler = async ({ request }) => {
       // Fetch from Vercel Blob
       console.log('Fetching file from Vercel Blob:', doc.filename);
       const response = await fetch(doc.filename);
+      console.log('Fetch response status:', response.status, response.statusText);
+
       if (!response.ok) {
-        throw new Error(`Failed to fetch file: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('Blob fetch failed:', response.status, errorText);
+        throw new Error(`Failed to fetch file (${response.status}): ${errorText || response.statusText}`);
       }
+
       const arrayBuffer = await response.arrayBuffer();
       fileBuffer = Buffer.from(arrayBuffer);
-      console.log('File fetched successfully, size:', fileBuffer.length);
+      console.log('File fetched successfully, size:', fileBuffer.length, 'bytes');
     } else {
       // Legacy: Read from local filesystem
+      console.log('Reading from local filesystem:', doc.filename);
       const filepath = path.join(UPLOAD_DIR, doc.filename);
       fileBuffer = await readFile(filepath);
     }
   } catch (e: any) {
-    console.error('File read error:', e);
-    return json({ error: `Could not read file: ${e.message}` }, { status: 500 });
+    console.error('File read error details:', {
+      message: e.message,
+      stack: e.stack,
+      filename: doc.filename,
+      isUrl: doc.filename.startsWith('http://') || doc.filename.startsWith('https://')
+    });
+    return json({
+      error: `Could not read file: ${e.message}`,
+      filename: doc.filename,
+      details: e.toString()
+    }, { status: 500 });
   }
   
   // If PDF, process ALL pages and combine results
