@@ -26,13 +26,14 @@
   let showUserMenu = false;
   
   // Theme state
-  type ThemeId = 'default' | 'tokyo-night' | 'console' | 'ocean';
+  type ThemeId = 'default' | 'tokyo-night' | 'console' | 'ocean' | 'high-contrast';
   let currentTheme: ThemeId = 'default';
   const themes: { id: ThemeId; name: string; tooltip: string }[] = [
     { id: 'default', name: 'Default', tooltip: 'Tokyo Night Dark' },
     { id: 'tokyo-night', name: 'Light', tooltip: 'Tokyo Night Light' },
     { id: 'console', name: 'Console', tooltip: 'Classic Console' },
-    { id: 'ocean', name: 'Ocean', tooltip: 'Ocean Blue' }
+    { id: 'ocean', name: 'Ocean', tooltip: 'Ocean Blue' },
+    { id: 'high-contrast', name: 'Hi-Con', tooltip: 'High Contrast' }
   ];
   
   function applyTheme(theme: ThemeId) {
@@ -8398,6 +8399,25 @@ Street names: Maple Drive, Oak Avenue, Park Road"
     --input-bg: #1a3050;
     --table-header: #2d5a94;
     --table-row-alt: #234a74;
+  }
+  
+  :global([data-theme="high-contrast"]) {
+    --bg-primary: #000000;
+    --bg-secondary: #0a0a0a;
+    --bg-tertiary: #1a1a1a;
+    --bg-hover: #2a2a2a;
+    --text-primary: #ffffff;
+    --text-secondary: #f0f0f0;
+    --text-muted: #b0b0b0;
+    --accent-primary: #00d4ff;
+    --accent-secondary: #ff00ff;
+    --accent-success: #00ff00;
+    --accent-warning: #ffff00;
+    --accent-error: #ff0000;
+    --border-color: #ffffff;
+    --input-bg: #000000;
+    --table-header: #1a1a1a;
+    --table-row-alt: #0f0f0f;
   }
   
   /* Apply theme variables */
