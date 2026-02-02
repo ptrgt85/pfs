@@ -21,7 +21,7 @@ try {
 const UPLOAD_DIR = 'static/uploads';
 const XAI_URL = 'https://api.x.ai/v1/chat/completions';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
 
 // Convert PDF page to high-res PNG base64 (600 DPI equivalent for survey plans)
 // Returns null if canvas is not available (serverless environment)
