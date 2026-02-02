@@ -13207,8 +13207,8 @@ Street names: Maple Drive, Oak Avenue, Park Road"
 
   /* ===== FORECAST TOOL STYLES ===== */
   .forecast-tool {
-    background: linear-gradient(135deg, #1a1b26 0%, #16161e 100%);
-    border: 1px solid #3d59a1;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 6px;
     margin: 8px 0;
     overflow: hidden;
@@ -13216,7 +13216,7 @@ Street names: Maple Drive, Oak Avenue, Park Road"
 
   .forecast-header {
     padding: 12px;
-    border-bottom: 1px solid #3d59a1;
+    border-bottom: 1px solid var(--border-color);
     display: flex;
     flex-wrap: wrap;
     gap: 16px;
@@ -13248,19 +13248,19 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   }
 
   .forecast-stats-text .stat-value.total {
-    color: #7aa2f7;
+    color: var(--accent-primary);
   }
 
   .forecast-stats-text .stat-value.allocated {
-    color: #9ece6a;
+    color: var(--accent-success);
   }
 
   .forecast-stats-text .stat-value.unallocated {
-    color: #ff9e64;
+    color: var(--accent-warning);
   }
 
   .forecast-stats-text .stat-sep {
-    color: #3b4261;
+    color: var(--border-color);
   }
 
   .forecast-stats-text .stat-link {
@@ -13402,7 +13402,7 @@ Street names: Maple Drive, Oak Avenue, Park Road"
 
   .forecast-select {
     background: var(--bg-primary);
-    border: 1px solid #3d59a1;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     color: var(--text-secondary);
     padding: 4px 8px;
@@ -13423,9 +13423,9 @@ Street names: Maple Drive, Oak Avenue, Park Road"
 
   .sort-direction-btn {
     background: var(--bg-primary);
-    border: 1px solid #3d59a1;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
-    color: #7aa2f7;
+    color: var(--accent-primary);
     padding: 4px 8px;
     font-size: 12px;
     cursor: pointer;
@@ -13434,8 +13434,8 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   }
 
   .sort-direction-btn:hover {
-    background: var(--bg-secondary);
-    border-color: #7aa2f7;
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
   }
 
   .lot-date-display {
@@ -13455,7 +13455,7 @@ Street names: Maple Drive, Oak Avenue, Park Road"
     font-size: 10px;
     font-family: inherit;
     background: var(--bg-primary);
-    border: 1px solid #3d59a1;
+    border: 1px solid var(--border-color);
     color: var(--text-muted);
     cursor: pointer;
     transition: all 0.2s;
@@ -13516,7 +13516,7 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   .forecast-table .th-sticky-left-3,
   .forecast-table .td-sticky-left-3 {
     left: 150px;
-    border-right: 2px solid #3d59a1;
+    border-right: 2px solid var(--accent-primary);
   }
 
   .forecast-table .th-sticky-right,
@@ -13525,7 +13525,7 @@ Street names: Maple Drive, Oak Avenue, Park Road"
     right: 0;
     background: var(--bg-primary);
     z-index: 2;
-    border-left: 2px solid #3d59a1;
+    border-left: 2px solid var(--accent-primary);
   }
 
   .forecast-table tbody .td-sticky-left,
@@ -13560,9 +13560,9 @@ Street names: Maple Drive, Oak Avenue, Park Road"
     width: 24px;
     height: 24px;
     background: var(--bg-secondary);
-    border: 1px solid #3d59a1;
+    border: 1px solid var(--accent-primary);
     border-radius: 4px;
-    color: #7aa2f7;
+    color: var(--accent-primary);
     font-size: 14px;
     font-weight: 700;
     cursor: pointer;
@@ -13573,7 +13573,7 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   }
 
   .nav-btn:hover {
-    background: #3d59a1;
+    background: var(--accent-primary);
     color: var(--text-primary);
   }
 
@@ -13589,9 +13589,9 @@ Street names: Maple Drive, Oak Avenue, Park Road"
 
   .btn-reset-offset {
     background: transparent;
-    border: 1px solid #7aa2f7;
+    border: 1px solid var(--accent-primary);
     border-radius: 4px;
-    color: #7aa2f7;
+    color: var(--accent-primary);
     font-size: 10px;
     padding: 2px 8px;
     cursor: pointer;
@@ -13599,15 +13599,15 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   }
 
   .btn-reset-offset:hover {
-    background: #7aa2f7;
-    color: #1a1b26;
+    background: var(--accent-primary);
+    color: var(--bg-primary);
   }
 
   .forecast-table th,
   .forecast-table td {
     padding: 6px 8px;
     text-align: center;
-    border-bottom: 1px solid #24283b;
+    border-bottom: 1px solid var(--border-color);
   }
 
   .forecast-table thead th {
@@ -13670,7 +13670,7 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   }
 
   .stage-expand-btn:hover {
-    color: #7aa2f7;
+    color: var(--accent-primary);
   }
 
   .forecast-table .lot-detail-row {
@@ -13690,7 +13690,7 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   }
 
   .forecast-table .lot-indent {
-    color: #3b4261;
+    color: var(--border-color);
     margin-right: 4px;
     font-weight: 400;
   }
@@ -14013,7 +14013,7 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   }
 
   .forecast-table tfoot .totals-row td {
-    border-top: 2px solid #3d59a1;
+    border-top: 2px solid var(--accent-primary);
   }
 
   .forecast-table .totals-content {
@@ -14140,7 +14140,7 @@ Street names: Maple Drive, Oak Avenue, Park Road"
 
   .date-input {
     background: var(--bg-primary);
-    border: 1px solid #3d59a1;
+    border: 1px solid var(--accent-primary);
     border-radius: 4px;
     color: var(--text-secondary);
     padding: 4px 8px;
