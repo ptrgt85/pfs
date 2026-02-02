@@ -21,7 +21,7 @@ try {
 const UPLOAD_DIR = 'static/uploads';
 const XAI_URL = 'https://api.x.ai/v1/chat/completions';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
 
 // Get PDF page count
 async function getPdfPageCount(pdfBuffer: Buffer): Promise<number> {
