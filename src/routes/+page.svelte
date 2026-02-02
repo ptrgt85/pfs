@@ -64,6 +64,7 @@
   }
   let showUserManagement = false;
   let showNewCompanyModal = false;
+  let logPanelCollapsed = false;
   let newCompanyName = '';
   let newCompanyAbn = '';
   let creatingCompany = false;
@@ -7138,8 +7139,11 @@
     </div>
   </div>
   
-  <div class="log-panel">
-    <span class="log-header">└─ Activity Log</span>
+  <div class="log-panel" class:collapsed={logPanelCollapsed}>
+    <button class="log-header" on:click={() => logPanelCollapsed = !logPanelCollapsed}>
+      <span>{logPanelCollapsed ? '▶' : '▼'} Activity Log</span>
+      <span class="log-toggle-hint">{logPanelCollapsed ? 'expand' : 'collapse'}</span>
+    </button>
     {#if extractionProgress.total > 0}
       <div class="extraction-progress">
         <div class="progress-bar">
@@ -9539,18 +9543,49 @@ Street names: Maple Drive, Oak Avenue, Park Road"
     height: 100px;
     min-height: 100px;
     flex-shrink: 0;
-    border-top: 1px solid #3b4261;
+    border-top: 1px solid var(--border-color);
     background: var(--input-bg);
     padding: 8px 12px;
     display: flex;
     flex-direction: column;
     gap: 4px;
     overflow: hidden;
+    transition: height 0.2s ease, min-height 0.2s ease;
+  }
+  
+  .log-panel.collapsed {
+    height: 32px;
+    min-height: 32px;
+  }
+  
+  .log-panel.collapsed .log-content,
+  .log-panel.collapsed .extraction-progress {
+    display: none;
   }
   
   .log-header {
-    color: #bb9af7;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: none;
+    border: none;
+    color: var(--accent-secondary);
     font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 2px 0;
+    width: 100%;
+    text-align: left;
+  }
+  
+  .log-header:hover {
+    color: var(--accent-primary);
+  }
+  
+  .log-toggle-hint {
+    font-size: 9px;
+    color: var(--text-muted);
+    opacity: 0.7;
   }
   
   .extraction-progress {
@@ -14358,7 +14393,22 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   
   /* Phones */
   @media (max-width: 480px) {
+    /* Prevent zoom on input focus - iOS requires 16px minimum */
+    input[type="text"],
+    input[type="number"],
+    input[type="email"],
+    input[type="password"],
+    input[type="date"],
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+    
+    /* Fix header scroll/accessibility issues */
     .top-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
       padding: 8px 12px;
       flex-wrap: wrap;
       gap: 8px;
