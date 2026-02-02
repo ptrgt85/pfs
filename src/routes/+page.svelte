@@ -8345,22 +8345,22 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   }
   
   :global([data-theme="tokyo-night"]) {
-    --bg-primary: #d5d6db;
-    --bg-secondary: #e9e9ec;
-    --bg-tertiary: #f0f0f2;
-    --bg-hover: #c8c9ce;
-    --text-primary: #343b58;
-    --text-secondary: #4c505e;
-    --text-muted: #9699a3;
-    --accent-primary: #34548a;
-    --accent-secondary: #5a4a78;
-    --accent-success: #485e30;
-    --accent-warning: #8f5e15;
-    --accent-error: #8c4351;
-    --border-color: #9699a3;
+    --bg-primary: #f5f5f7;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e8e8ec;
+    --bg-hover: #d8d8dc;
+    --text-primary: #1a1a2e;
+    --text-secondary: #2d2d44;
+    --text-muted: #5a5a70;
+    --accent-primary: #2563eb;
+    --accent-secondary: #7c3aed;
+    --accent-success: #16a34a;
+    --accent-warning: #d97706;
+    --accent-error: #dc2626;
+    --border-color: #c0c0c8;
     --input-bg: #ffffff;
-    --table-header: #c8c9ce;
-    --table-row-alt: #e4e5e9;
+    --table-header: #e0e0e4;
+    --table-row-alt: #f0f0f4;
   }
   
   :global([data-theme="console"]) {
