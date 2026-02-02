@@ -53,6 +53,7 @@ export const GET: RequestHandler = async ({ cookies }) => {
       email: user.email,
       name: user.name,
       isMaster: user.isMaster === 1,
+      theme: user.theme || 'default',
       access
     }
   });

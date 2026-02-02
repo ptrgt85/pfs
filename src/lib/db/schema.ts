@@ -208,6 +208,7 @@ export const users = pgTable('users', {
   name: text('name').notNull(),
   isMaster: integer('is_master').default(0), // 1 = master user (can manage roles/users)
   isActive: integer('is_active').default(1),
+  theme: text('theme').default('default'), // 'default', 'tokyo-night', 'console', 'ocean'
   lastLogin: timestamp('last_login'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull()
