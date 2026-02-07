@@ -8,13 +8,25 @@ import crypto from 'crypto';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
   const { email, password } = await request.json();
-  
+
   if (!email || !password) {
     return json({ error: 'Email and password are required' }, { status: 400 });
   }
-  
+
   // Find user
-  const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+  console.log('Login attempt for:', email.toLowerCase());
+  let user;
+  try {
+    const result = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+    user = result[0];
+    console.log('User query successful, found:', !!user);
+  } catch (dbError: any) {
+    console.error('Database query failed:', dbError);
+    console.error('Error code:', dbError.code);
+    console.error('Error detail:', dbError.detail);
+    console.error('Full error:', JSON.stringify(dbError, null, 2));
+    return json({ error: 'Database connection error', details: dbError.message }, { status: 500 });
+  }
   
   if (!user) {
     return json({ error: 'Invalid email or password' }, { status: 401 });

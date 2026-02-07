@@ -90,7 +90,8 @@ const _LAND_BUDGET_CATEGORIES = {
     isHeader: true,
     parent: 'netResidentialArea',
     subcategories: [
-      { key: 'connectorRoads', name: 'Connector Roads' }
+      { key: 'connectorRoads', name: 'Connector Roads' },
+      { key: 'localRoads', name: 'Local Roads', isPercentOfNSA: true }
     ]
   },
   totalNRA: {

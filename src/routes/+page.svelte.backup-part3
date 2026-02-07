@@ -16,8 +16,7 @@
   import PricingReviewModal from '$lib/components/PricingReviewModal.svelte';
   import FieldsManagerModal from '$lib/components/FieldsManagerModal.svelte';
   import ExtractionModals from '$lib/components/ExtractionModals.svelte';
-  import StageTable from '$lib/components/StageTable.svelte';
-
+  
   // ===== AUTHENTICATION STATE =====
   interface User {
     id: number;
@@ -165,81 +164,7 @@
   let inlineViewerHeight = 250;
   let pdfPageNumber = 1;
   let analyzingPage = false;
-  let navDockedPanel: string | null = null;
-  let dockedSnapshot: any = null;
-  let dockedDocuments: any[] = [];
-  let dockedInlineDocument: any = null;
-  let dockedInlineZoom = 1;
-  let dockedPdfPageNumber = 1;
-  let treePanelWidth = 350;
-  let isDraggingSplitter = false;
-  let splitPreset: string = 'auto';
-
-  function onSplitterMouseDown(e: MouseEvent) {
-    e.preventDefault();
-    isDraggingSplitter = true;
-    splitPreset = 'custom';
-    const startX = e.clientX;
-    const startWidth = treePanelWidth;
-    function onMouseMove(ev: MouseEvent) {
-      const mainEl = document.querySelector('.main');
-      const maxW = mainEl ? mainEl.clientWidth * 0.75 : 1200;
-      treePanelWidth = Math.max(250, Math.min(maxW, startWidth + (ev.clientX - startX)));
-    }
-    function onMouseUp() {
-      isDraggingSplitter = false;
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    }
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  }
-
-  function applySplitPreset(preset: string) {
-    splitPreset = preset;
-    const mainEl = document.querySelector('.main');
-    if (!mainEl) return;
-    const w = mainEl.clientWidth;
-    switch (preset) {
-      case '30': treePanelWidth = Math.round(w * 0.3); break;
-      case '40': treePanelWidth = Math.round(w * 0.4); break;
-      case '50': treePanelWidth = Math.round(w * 0.5); break;
-      case '60': treePanelWidth = Math.round(w * 0.6); break;
-      case '70': treePanelWidth = Math.round(w * 0.7); break;
-      default: treePanelWidth = 350; break;
-    }
-  }
-
-  function dockPanel(panelId: string) {
-    if (navDockedPanel === panelId) {
-      navDockedPanel = null;
-      dockedSnapshot = null;
-      dockedDocuments = [];
-      dockedInlineDocument = null;
-      dockedInlineZoom = 1;
-      dockedPdfPageNumber = 1;
-      treePanelWidth = 350;
-      splitPreset = 'auto';
-    } else {
-      dockedSnapshot = {
-        selectedNode: selectedNode ? JSON.parse(JSON.stringify(selectedNode)) : null,
-        hierarchyPath: JSON.parse(JSON.stringify(hierarchyPath)),
-      };
-      if (panelId === 'documents') {
-        dockedDocuments = JSON.parse(JSON.stringify(documents));
-        dockedInlineDocument = inlineDocument ? JSON.parse(JSON.stringify(inlineDocument)) : null;
-        dockedInlineZoom = inlineZoom;
-        dockedPdfPageNumber = pdfPageNumber;
-      }
-      navDockedPanel = panelId;
-      const mainEl = document.querySelector('.main');
-      if (mainEl && treePanelWidth < mainEl.clientWidth * 0.35) {
-        treePanelWidth = Math.round(mainEl.clientWidth * 0.45);
-        splitPreset = 'auto';
-      }
-    }
-  }
-
+  
   // Verification/correction state
   let verificationResult: any = null;
   let showVerificationModal = false;
@@ -488,58 +413,46 @@
   }
   
   function calculateLotPrice(lot: any): { basePrice: number; balancePrice: number; totalPrice: number; matchedProduct: string; pricePerSqm: number } | null {
-    if (pricingProducts.length === 0) return null;
+    if (!lot.frontage || !lot.depth || pricingProducts.length === 0) return null;
     
-    const lotFrontage = parseFloat(lot.frontage) || 0;
-    const lotDepth = parseFloat(lot.depth) || 0;
-    const lotArea = parseFloat(lot.area) || (lotFrontage * lotDepth);
+    const lotFrontage = parseFloat(lot.frontage);
+    const lotDepth = parseFloat(lot.depth);
+    const lotArea = parseFloat(lot.area) || lotFrontage * lotDepth;
     
-    const hasFrontageDepth = lotFrontage > 0 && lotDepth > 0;
-    if (!hasFrontageDepth && lotArea <= 0) return null;
+    if (lotFrontage <= 0 || lotDepth <= 0) return null;
     
     // Filter products with prices set
     const pricedProducts = pricingProducts.filter(p => p.basePrice > 0);
     if (pricedProducts.length === 0) return null;
     
+    // Best practice: Find closest frontage WITHOUT going over lot frontage
+    // Then find closest depth WITHOUT going over lot depth
     let bestMatch: typeof pricedProducts[0] | null = null;
+    let bestScore = -Infinity;
     
-    if (hasFrontageDepth) {
-      // Primary method: match by frontage and depth
-      let bestScore = -Infinity;
+    for (const product of pricedProducts) {
+      // Prefer products with frontage <= lot frontage
+      const frontageOK = product.frontage <= lotFrontage + 0.5;
+      const depthOK = product.depth <= lotDepth + 0.5;
       
-      for (const product of pricedProducts) {
-        const frontageOK = product.frontage <= lotFrontage + 0.5;
-        const depthOK = product.depth <= lotDepth + 0.5;
+      if (frontageOK) {
+        // Score: prefer closest frontage without going over (higher = better)
+        const frontageScore = lotFrontage - product.frontage;
+        const depthScore = depthOK ? (lotDepth - product.depth) : -50;
         
-        if (frontageOK) {
-          const frontageScore = lotFrontage - product.frontage;
-          const depthScore = depthOK ? (lotDepth - product.depth) : -50;
-          const score = 100 - frontageScore * 10 - Math.abs(depthScore);
-          
-          if (score > bestScore) {
-            bestScore = score;
-            bestMatch = product;
-          }
+        // Combined score: prioritize frontage match, then depth
+        const score = 100 - frontageScore * 10 - Math.abs(depthScore);
+        
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = product;
         }
       }
     }
     
+    // If no product fits (lot smaller than all products), use smallest product
     if (!bestMatch) {
-      // Fallback method: match by closest area WITHOUT going over lot area
-      let bestAreaDiff = Infinity;
-      for (const product of pricedProducts) {
-        if (product.baseArea <= lotArea + 1) {
-          const diff = lotArea - product.baseArea;
-          if (diff < bestAreaDiff) {
-            bestAreaDiff = diff;
-            bestMatch = product;
-          }
-        }
-      }
-      // If lot is smaller than all products, use the smallest product
-      if (!bestMatch) {
-        bestMatch = pricedProducts.reduce((min, p) => p.baseArea < min.baseArea ? p : min, pricedProducts[0]);
-      }
+      bestMatch = pricedProducts.reduce((min, p) => p.baseArea < min.baseArea ? p : min, pricedProducts[0]);
     }
     
     const basePrice = bestMatch.basePrice;
@@ -623,9 +536,458 @@
   let showPricingReview = false;
   let stagePriceEdits: Map<number, number> = new Map();
   
+  // Stage table tabs
+  let stageTableTab: 'main' | 'dates' | 'pricing' = 'main';
+  
   // ===== RESPONSIVE UI STATE =====
   let treeNavCollapsed = false;
   
+  // Tab edit modes
+  let datesTabEditMode = false;
+  let pricingTabEditMode = false;
+  let datesTabEdits: Map<number, Record<string, string>> = new Map();
+  let pricingTabEdits: Map<number, Record<string, string>> = new Map();
+  
+  // Date status types: 'forecast' (future), 'actual' (confirmed past), 'pending' (past but unconfirmed)
+  type DateStatus = 'forecast' | 'actual' | 'pending' | 'none';
+  
+  function getDateStatus(dateStr: string | null | undefined, isActual: boolean | number | undefined): DateStatus {
+    if (!dateStr) return 'none';
+    const date = new Date(dateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (date > today) {
+      return 'forecast'; // Future date
+    } else if (isActual) {
+      return 'actual'; // Past date, confirmed as actual
+    } else {
+      return 'pending'; // Past date, not confirmed - needs attention
+    }
+  }
+  
+  // Get status indicator styles
+  const dateStatusStyles: Record<DateStatus, { color: string; bg: string; border: string; label: string; title: string }> = {
+    forecast: { color: '#e0af68', bg: 'rgba(224, 175, 104, 0.15)', border: '#e0af68', label: 'F', title: 'Forecast - Future date' },
+    actual: { color: '#22c55e', bg: 'rgba(34, 197, 94, 0.2)', border: '#22c55e', label: 'A', title: 'Actual - Confirmed' },
+    pending: { color: '#f7768e', bg: 'rgba(247, 118, 142, 0.15)', border: '#f7768e', label: 'P', title: 'Pending - Needs confirmation' },
+    none: { color: '#565f89', bg: 'transparent', border: 'transparent', label: '', title: '' }
+  };
+  
+  // Toggle actual confirmation for a lot date field
+  async function toggleLotDateActual(lotId: number, dateField: string, currentCustomData: any) {
+    const actualField = `${dateField}_actual`;
+    const currentActual = currentCustomData[actualField] || false;
+    const updatedCustomData = { ...currentCustomData, [actualField]: !currentActual };
+    
+    try {
+      const res = await fetch('/api/lots', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: lotId, customData: JSON.stringify(updatedCustomData) })
+      });
+      if (res.ok) {
+        // Update local tableData
+        const lotIndex = tableData.findIndex(l => l.id === lotId);
+        if (lotIndex >= 0) {
+          tableData[lotIndex].customData = updatedCustomData;
+          tableData = [...tableData];
+        }
+        log(`Date ${!currentActual ? 'confirmed as actual' : 'reverted to pending'}`, 'success');
+      }
+    } catch (error) {
+      log('Failed to update date status', 'error');
+    }
+  }
+  
+  // Toggle actual confirmation for a stage date field
+  async function toggleStageDateActual(stageId: number, dateField: 'registrationDate' | 'settlementDate', currentActual: boolean) {
+    const actualField = `${dateField}Actual`;
+    
+    try {
+      const res = await fetch('/api/stages', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: stageId, [actualField]: !currentActual })
+      });
+      if (res.ok) {
+        // Update entityDetails
+        entityDetails = { ...entityDetails, [actualField]: !currentActual ? 1 : 0 };
+        log(`Stage date ${!currentActual ? 'confirmed as actual' : 'reverted to pending'}`, 'success');
+      }
+    } catch (error) {
+      log('Failed to update stage date status', 'error');
+    }
+  }
+  
+  // Start editing dates tab
+  function startDatesTabEdit() {
+    datesTabEditMode = true;
+    datesTabEdits = new Map();
+    tableData.forEach(row => {
+      const customData = row.customData ? (typeof row.customData === 'string' ? JSON.parse(row.customData) : row.customData) : {};
+      datesTabEdits.set(row.id, {
+        on_market_date: customData.on_market_date || '',
+        sold_date: customData.sold_date || '',
+        exchange_date: customData.exchange_date || '',
+        settled_date: customData.settled_date || '',
+        cancelled_date: customData.cancelled_date || ''
+      });
+    });
+    datesTabEdits = datesTabEdits;
+    log('Editing Key Dates - Save when ready', 'info');
+  }
+  
+  // Start editing pricing tab
+  function startPricingTabEdit() {
+    pricingTabEditMode = true;
+    pricingTabEdits = new Map();
+    tableData.forEach(row => {
+      const customData = row.customData ? (typeof row.customData === 'string' ? JSON.parse(row.customData) : row.customData) : {};
+      pricingTabEdits.set(row.id, {
+        deposit_amount: customData.deposit_amount || '',
+        deposit_date: customData.deposit_date || '',
+        rebates: customData.rebates || '',
+        discounts: customData.discounts || '',
+        price_adjustments: customData.price_adjustments || ''
+      });
+    });
+    pricingTabEdits = pricingTabEdits;
+    log('Editing Pricing Details - Save when ready', 'info');
+  }
+  
+  // Cancel tab edits
+  function cancelDatesTabEdit() {
+    datesTabEditMode = false;
+    datesTabEdits = new Map();
+    log('Dates editing cancelled', 'info');
+  }
+  
+  function cancelPricingTabEdit() {
+    pricingTabEditMode = false;
+    pricingTabEdits = new Map();
+    log('Pricing editing cancelled', 'info');
+  }
+  
+  // Save dates tab edits
+  async function saveDatesTabEdits() {
+    let saved = 0;
+    let failed = 0;
+    
+    for (const [lotId, edits] of datesTabEdits) {
+      const lot = tableData.find(l => l.id === lotId);
+      if (!lot) continue;
+      
+      try {
+        let customData: Record<string, any> = {};
+        if (lot.customData) {
+          customData = typeof lot.customData === 'string' ? JSON.parse(lot.customData) : { ...lot.customData };
+        }
+        
+        // For each date field, check if the value changed and set the _manual flag
+        const dateFields = ['on_market_date', 'sold_date', 'exchange_date', 'settled_date', 'cancelled_date'];
+        for (const field of dateFields) {
+          const oldValue = customData[field] || '';
+          const newValue = edits[field] || '';
+          if (newValue && newValue !== oldValue) {
+            // User manually set/changed this date - mark as manual
+            customData[`${field}_manual`] = true;
+          } else if (!newValue && oldValue) {
+            // User cleared this date - remove manual flag
+            delete customData[`${field}_manual`];
+          }
+        }
+        
+        Object.assign(customData, edits);
+        
+        const res = await fetch('/api/lots', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: lotId, customData: JSON.stringify(customData) })
+        });
+        
+        if (res.ok) {
+          lot.customData = JSON.stringify(customData);
+          saved++;
+        } else {
+          failed++;
+        }
+      } catch (e) {
+        failed++;
+      }
+    }
+    
+    tableData = [...tableData];
+    datesTabEditMode = false;
+    datesTabEdits = new Map();
+    
+    if (failed === 0) {
+      log(`Saved dates for ${saved} lots`, 'success');
+    } else {
+      log(`Saved ${saved} lots, ${failed} failed`, 'warning');
+    }
+  }
+  
+  // Save pricing tab edits
+  async function savePricingTabEdits() {
+    let saved = 0;
+    let failed = 0;
+    
+    for (const [lotId, edits] of pricingTabEdits) {
+      const lot = tableData.find(l => l.id === lotId);
+      if (!lot) continue;
+      
+      try {
+        let customData: Record<string, any> = {};
+        if (lot.customData) {
+          customData = typeof lot.customData === 'string' ? JSON.parse(lot.customData) : { ...lot.customData };
+        }
+        
+        Object.assign(customData, edits);
+        
+        const res = await fetch('/api/lots', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: lotId, customData: JSON.stringify(customData) })
+        });
+        
+        if (res.ok) {
+          lot.customData = JSON.stringify(customData);
+          saved++;
+        } else {
+          failed++;
+        }
+      } catch (e) {
+        failed++;
+      }
+    }
+    
+    tableData = [...tableData];
+    pricingTabEditMode = false;
+    pricingTabEdits = new Map();
+    
+    if (failed === 0) {
+      log(`Saved pricing details for ${saved} lots`, 'success');
+    } else {
+      log(`Saved ${saved} lots, ${failed} failed`, 'warning');
+    }
+  }
+  
+  // Inline price editing mode for table view
+  let inlinePriceEditMode = false;
+  let inlinePriceEdits: Map<number, number> = new Map(); // lotId -> price
+  let savingAllPrices = false;
+  
+  // Start inline price editing mode
+  function startInlinePriceEdit() {
+    if (!selectedNode || selectedNode.type !== 'stage') return;
+    
+    inlinePriceEdits = new Map();
+    
+    // Initialize with current prices from database
+    for (const lot of tableData) {
+      const currentPrice = parseFloat(lot.price) || 0;
+      // Always start with the current saved price
+      inlinePriceEdits.set(lot.id, currentPrice);
+    }
+    
+    inlinePriceEdits = inlinePriceEdits;
+    inlinePriceEditMode = true;
+    log('Editing prices for all lots - Save All when ready', 'info');
+  }
+  
+  // Update inline price for a lot
+  function updateInlinePrice(lotId: number, price: number) {
+    inlinePriceEdits.set(lotId, price);
+    inlinePriceEdits = inlinePriceEdits;
+  }
+  
+  // Use indicative price for a lot
+  function useIndicativePriceInline(lotId: number) {
+    const lot = tableData.find(l => l.id === lotId);
+    if (!lot) return;
+    const indicative = calculateLotPrice(lot);
+    if (indicative) {
+      inlinePriceEdits.set(lotId, indicative.totalPrice);
+      inlinePriceEdits = inlinePriceEdits;
+      // Log price calculation breakdown for user review
+      log(`Lot ${lot.lotNumber || lot.id}: Base ${indicative.matchedProduct} = $${indicative.basePrice.toLocaleString()} + Balance $${indicative.balancePrice.toLocaleString()} = $${indicative.totalPrice.toLocaleString()} ($${indicative.pricePerSqm}/m²)`, 'info');
+    }
+  }
+  
+  // Apply all suggested prices at once
+  function applyAllSuggestedPrices() {
+    let appliedCount = 0;
+    for (const lot of tableData) {
+      const indicative = calculateLotPrice(lot);
+      if (indicative) {
+        inlinePriceEdits.set(lot.id, indicative.totalPrice);
+        appliedCount++;
+      }
+    }
+    inlinePriceEdits = inlinePriceEdits;
+    log(`Applied suggested pricing to ${appliedCount} lots`, 'success');
+  }
+  
+  // Cancel inline price editing
+  function cancelInlinePriceEdit() {
+    inlinePriceEditMode = false;
+    inlinePriceEdits = new Map();
+    log('Price editing cancelled', 'info');
+  }
+  
+  // Save all inline price edits
+  async function saveAllInlinePrices() {
+    if (!selectedNode || selectedNode.type !== 'stage') return;
+    
+    const updates: { lotId: number; price: number; pricePerSqm: number }[] = [];
+    
+    inlinePriceEdits.forEach((price, lotId) => {
+      const lot = tableData.find(l => l.id === lotId);
+      if (!lot) return;
+      const originalPrice = parseFloat(lot.price) || 0;
+      if (price !== originalPrice && price > 0) {
+        const area = parseFloat(lot.area) || (parseFloat(lot.frontage) * parseFloat(lot.depth)) || 1;
+        updates.push({ lotId, price, pricePerSqm: Math.round(price / area) });
+      }
+    });
+    
+    if (updates.length === 0) {
+      log('No price changes to save', 'warning');
+      return;
+    }
+    
+    savingAllPrices = true;
+    let saved = 0;
+    let failed = 0;
+    
+    for (const update of updates) {
+      try {
+        const res = await fetch(`/api/lots/${update.lotId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ price: update.price, pricePerSqm: update.pricePerSqm })
+        });
+        if (res.ok) {
+          saved++;
+          const lot = tableData.find(l => l.id === update.lotId);
+          if (lot) {
+            lot.price = update.price;
+            lot.pricePerSqm = update.pricePerSqm;
+          }
+        } else {
+          failed++;
+        }
+      } catch (e) {
+        failed++;
+      }
+    }
+    
+    tableData = [...tableData];
+    savingAllPrices = false;
+    inlinePriceEditMode = false;
+    inlinePriceEdits = new Map();
+    
+    if (failed === 0) {
+      log(`Saved pricing for ${saved} lots`, 'success');
+    } else {
+      log(`Saved ${saved} lots, ${failed} failed`, 'warning');
+    }
+  }
+  
+  // Update custom field in lot's customData
+  async function updateCustomField(lotId: number, fieldKey: string, value: string) {
+    const lot = tableData.find(l => l.id === lotId);
+    if (!lot) return;
+    
+    try {
+      // Parse existing customData or create new object
+      let customData: Record<string, any> = {};
+      if (lot.customData) {
+        customData = typeof lot.customData === 'string' ? JSON.parse(lot.customData) : { ...lot.customData };
+      }
+      
+      // Update the field
+      customData[fieldKey] = value;
+      
+      // Save to database
+      const res = await fetch('/api/lots', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: lotId, customData: JSON.stringify(customData) })
+      });
+      
+      if (res.ok) {
+        // Update local state
+        lot.customData = JSON.stringify(customData);
+        tableData = [...tableData];
+      }
+    } catch (e) {
+      console.error('Failed to update custom field:', e);
+    }
+  }
+  
+  // Bulk update custom fields for selected rows
+  async function applyBulkCustomFieldEdit() {
+    if (!bulkEditField || !bulkEditValue || selectedRows.size === 0) return;
+    
+    let updated = 0;
+    let failed = 0;
+    
+    for (const rowId of selectedRows) {
+      const lot = tableData.find(l => l.id === rowId);
+      if (!lot) continue;
+      
+      try {
+        let customData: Record<string, any> = {};
+        if (lot.customData) {
+          customData = typeof lot.customData === 'string' ? JSON.parse(lot.customData) : { ...lot.customData };
+        }
+        
+        customData[bulkEditField] = bulkEditValue;
+        
+        const res = await fetch('/api/lots', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: rowId, customData: JSON.stringify(customData) })
+        });
+        
+        if (res.ok) {
+          lot.customData = JSON.stringify(customData);
+          updated++;
+        } else {
+          failed++;
+        }
+      } catch (e) {
+        failed++;
+      }
+    }
+    
+    tableData = [...tableData];
+    
+    if (failed === 0) {
+      log(`Updated ${bulkEditField} for ${updated} lots`, 'success');
+    } else {
+      log(`Updated ${updated} lots, ${failed} failed`, 'warning');
+    }
+    
+    clearSelection();
+    bulkEditField = '';
+    bulkEditValue = '';
+  }
+  
+  // Count pending inline price changes
+  $: inlinePriceChangeCount = (() => {
+    let count = 0;
+    inlinePriceEdits.forEach((price, lotId) => {
+      const lot = tableData.find(l => l.id === lotId);
+      if (lot) {
+        const originalPrice = parseFloat(lot.price) || 0;
+        if (price !== originalPrice && price > 0) count++;
+      }
+    });
+    return count;
+  })();
   
   // Initialize pricing review for all lots in stage
   function startPricingReview() {
@@ -1180,7 +1542,6 @@
     editingId = null;
     isAdding = false;
     editingProperty = null;
-    inlineDocument = null;
     log(`Selected ${node.name}`, 'info');
 
     // Load and apply saved preferences for this node
@@ -1211,7 +1572,6 @@
     const config = typeConfig[node.type];
     if (!config.childEndpoint) {
       tableData = [];
-      await loadDocuments();
       return;
     }
     
@@ -1326,63 +1686,6 @@
     documents = await res.json();
   }
   
-  // Generate lots from density calculation (used by LandBudgetPanel)
-  async function generateLotsFromDensity(params: { stageId: number; rows: Array<{ name: string; areaHa: number; density: number; lotCount: number; avgSqm: number }>; deleteExisting?: boolean }) {
-    const { stageId, rows, deleteExisting } = params;
-    const totalLots = rows.reduce((sum, r) => sum + r.lotCount, 0);
-    
-    // Delete existing masterplan lots if regenerating
-    if (deleteExisting) {
-      const masterplanLots = tableData.filter(l => l.status?.toLowerCase() === 'masterplan');
-      log(`Removing ${masterplanLots.length} existing masterplan lots...`, 'loading');
-      let deleted = 0;
-      for (const lot of masterplanLots) {
-        try {
-          await fetch('/api/lots', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: lot.id })
-          });
-          deleted++;
-        } catch (e) {
-          console.error(`Failed to delete lot ${lot.id}:`, e);
-        }
-      }
-      log(`Removed ${deleted} lots, generating ${totalLots} new lots...`, 'loading');
-    } else {
-      log(`Generating ${totalLots} lots from ${rows.length} residential area(s)...`, 'loading');
-    }
-    
-    let created = 0;
-    let lotNum = 1;
-    
-    for (const row of rows) {
-      for (let i = 0; i < row.lotCount; i++) {
-        try {
-          await fetch('/api/lots', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              stageId,
-              lotNumber: `${lotNum}`,
-              area: row.avgSqm.toFixed(2),
-              streetName: row.name,
-              status: 'masterplan'
-            })
-          });
-          created++;
-          lotNum++;
-        } catch (e) {
-          console.error(`Failed to create lot ${lotNum}:`, e);
-        }
-      }
-    }
-    
-    const summary = rows.map(r => `${r.name}: ${r.lotCount}@${r.density}/ha`).join(', ');
-    log(`Generated ${created} lots (${summary})`, 'success');
-    await reloadTableData();
-  }
-
   // Helper function to reload table data for current selected node
   async function reloadTableData() {
     if (!selectedNode) return;
@@ -2895,181 +3198,6 @@
   }
 </script>
 
-{#snippet dockBtn(panelId: string, label: string)}
-  <button 
-    class="btn-dock-toggle" 
-    on:click={() => dockPanel(panelId)} 
-    title={navDockedPanel === panelId ? `Undock ${label}` : `Dock ${label} to side panel`}
-  >
-    {navDockedPanel === panelId ? '⮩' : '⮨'}
-  </button>
-{/snippet}
-
-{#snippet panelPropertiesSnippet()}
-  {#if entityDetails}
-    <div class="dockable-panel">
-      <div class="dock-btn-overlay">{@render dockBtn('properties', 'Properties')}</div>
-      <PropertiesPanel
-        {selectedNode}
-        {entityDetails}
-        {entityFields}
-        {typeLabels}
-        collapsed={!showProperties}
-        hasPermission={hasPermission}
-        onToggleCollapsed={() => { showProperties = !showProperties; if (selectedNode) saveNodePreference(selectedNode.type, selectedNode.id, 'showProperties', showProperties); }}
-        onSave={handlePropertySave}
-      />
-    </div>
-  {/if}
-{/snippet}
-
-{#snippet panelPricingSnippet()}
-  <div class="dockable-panel">
-    <div class="dock-btn-overlay">{@render dockBtn('pricing', 'Pricing')}</div>
-    <PricingPanel
-      {selectedNode}
-      bind:pricingProducts
-      masterplanCount={tableData.filter(lot => lot.status?.toLowerCase() === 'masterplan' && (!lot.price || lot.price === 0)).length}
-      hasPermission={hasPermission}
-      onLog={log}
-      onApplyToMasterplan={applyPricingToMasterplanLots}
-    />
-  </div>
-{/snippet}
-
-{#snippet panelDocumentsSnippet()}
-  <div class="dockable-panel">
-    <div class="dock-btn-overlay">{@render dockBtn('documents', 'Documents')}</div>
-    <DocumentPanel
-      {selectedNode}
-      {documents}
-      tableDataLength={tableData.length}
-      {extractingDocId}
-      {selectedModel}
-      hasPermission={hasPermission}
-      onUpload={handleDocumentUpload}
-      onDelete={deleteDocument}
-      onExtract={(docId) => extractFromDocument(docId, false)}
-      onReanalyze={(docId) => extractFromDocument(docId, true)}
-      onAnalyzePOS={analyzePlanOfSubdivision}
-      onCrossReference={crossReferenceDocument}
-      onOpenPreExtraction={openPreExtractionModal}
-      onPreview={(doc) => previewDocument = doc}
-      onView={(doc) => { inlineDocument = doc; inlineZoom = 1; pdfPageNumber = 1; }}
-      inlineDocumentId={inlineDocument?.id ?? null}
-      onModelChange={(model) => { selectedModel = model as any; }}
-    />
-    {#if inlineDocument}
-      <div class="inline-viewer-section">
-        <div class="inline-viewer-header">
-          <span>{inlineDocument.mimeType === 'application/pdf' ? '📑' : '📄'} {inlineDocument.originalName}</span>
-          <div class="inline-viewer-controls">
-            {#if inlineDocument.mimeType?.startsWith('image/')}
-              <button class="zoom-btn" on:click={() => inlineZoom = Math.max(0.5, inlineZoom - 0.25)}>🔍−</button>
-              <span class="zoom-level">{Math.round(inlineZoom * 100)}%</span>
-              <button class="zoom-btn" on:click={() => inlineZoom = Math.min(3, inlineZoom + 0.25)}>🔍+</button>
-              <button class="zoom-btn" on:click={() => inlineZoom = 1}>Reset</button>
-            {/if}
-            {#if inlineDocument.mimeType === 'application/pdf'}
-              <div class="page-controls">
-                <button class="page-btn" on:click={() => pdfPageNumber = Math.max(1, pdfPageNumber - 1)} title="Previous page">◀</button>
-                <span class="page-indicator">Page {pdfPageNumber}</span>
-                <button class="page-btn" on:click={() => pdfPageNumber++} title="Next page">▶</button>
-              </div>
-            {/if}
-            <button 
-              class="btn-capture" 
-              on:click={captureScreen}
-              disabled={isCapturing}
-              title="Capture your screen view for AI analysis"
-            >
-              {isCapturing ? '⏳' : '📷'} {capturedImage ? 'Re-capture' : 'Capture'}
-            </button>
-            {#if capturedImage}
-              <span class="capture-indicator" title="Screen capture ready">✓</span>
-              <button class="btn-clear-capture" on:click={clearCapture} title="Clear capture">✕</button>
-            {/if}
-            <select 
-              class="model-selector" 
-              bind:value={selectedModel}
-              title="Choose AI model for extraction"
-            >
-              {#each modelOptions as model}
-                <option value={model.id}>{model.name}</option>
-              {/each}
-            </select>
-            <button 
-              class="btn-analyze-page" 
-              on:click={analyzePageForVerification}
-              disabled={analyzingPage || (!capturedImage && inlineDocument.mimeType !== 'application/pdf')}
-              title={capturedImage ? "Analyze captured screen" : "Analyze PDF page and verify lot data"}
-            >
-              {analyzingPage ? '⏳' : '🔍'} Extract Data
-            </button>
-            <input type="range" min="150" max="500" bind:value={inlineViewerHeight} class="height-slider" title="Adjust viewer height" />
-            <button class="btn-close-inline" on:click={() => inlineDocument = null}>✕</button>
-          </div>
-        </div>
-        <div class="inline-viewer-container" style="height: {inlineViewerHeight}px;">
-          {#if inlineDocument.mimeType === 'application/pdf'}
-            <iframe 
-              src="{inlineDocument.filename}" 
-              title={inlineDocument.originalName}
-              class="inline-viewer-pdf"
-            ></iframe>
-          {:else}
-            <div class="inline-viewer-scroll">
-              <img 
-                src="{inlineDocument.filename}" 
-                alt={inlineDocument.originalName} 
-                class="inline-viewer-image"
-                style="width: {inlineZoom * 100}%;"
-              />
-            </div>
-          {/if}
-        </div>
-      </div>
-    {/if}
-  </div>
-{/snippet}
-
-{#snippet panelSummarySnippet()}
-  <div class="dockable-panel">
-    <div class="dock-btn-overlay">{@render dockBtn('summary', 'Summary')}</div>
-    <SummaryBar
-      {tableData}
-      summary={tableSummary}
-      collapsed={!showSummary}
-      onToggleCollapsed={() => { showSummary = !showSummary; if (selectedNode) saveNodePreference(selectedNode.type, selectedNode.id, 'showSummary', showSummary); }}
-    />
-  </div>
-{/snippet}
-
-{#snippet panelLandBudgetSnippet()}
-  <div class="dockable-panel">
-    <div class="dock-btn-overlay">{@render dockBtn('landBudget', 'Land Budget')}</div>
-    <LandBudgetPanel
-      {selectedNode}
-      userCanEdit={userCanEdit}
-      onLog={log}
-      onGenerateLots={generateLotsFromDensity}
-      existingLots={tableData}
-    />
-  </div>
-{/snippet}
-
-{#snippet panelForecastSnippet()}
-  <div class="dockable-panel">
-    <div class="dock-btn-overlay">{@render dockBtn('forecast', 'Forecast')}</div>
-    <ForecastPanel
-      {selectedNode}
-      onLog={log}
-      onSaveNodePreference={saveNodePreference}
-      onLoadNodePreferences={loadNodePreferences}
-    />
-  </div>
-{/snippet}
-
 {#snippet treeNode(node: TreeNode, depth: number, isLast: boolean, ancestors: boolean[])}
   {@const hasChildren = typeConfig[node.type].childEndpoint !== ''}
   <div class="tree-row" class:selected={selectedNode?.id === node.id && selectedNode?.type === node.type}>
@@ -3077,7 +3205,7 @@
     <button class="tree-expand" on:click={() => toggleNode(node)} disabled={!hasChildren}>
       {#if node.loading}*{:else if hasChildren}{node.expanded ? '▼' : '▶'}{:else}·{/if}
     </button>
-    <button class="tree-label" style="color: {typeColors[node.type]}" on:click={() => { selectNode(node); if (hasChildren) toggleNode(node); }}>
+    <button class="tree-label" style="color: {typeColors[node.type]}" on:click={() => selectNode(node)}>
       [{typeLabels[node.type]}] {node.name}
     </button>
   </div>
@@ -3109,7 +3237,7 @@
   />
   
   <div class="main">
-    <div class="tree-panel" class:collapsed={treeNavCollapsed} class:has-docked={navDockedPanel !== null} style="width: {treePanelWidth}px">
+    <div class="tree-panel" class:collapsed={treeNavCollapsed}>
       <div class="panel-header tree-header">
         <button class="tree-toggle-btn" on:click={() => treeNavCollapsed = !treeNavCollapsed} title={treeNavCollapsed ? 'Expand Tree' : 'Collapse Tree'}>
           {treeNavCollapsed ? '▶' : '▼'}
@@ -3133,136 +3261,6 @@
           {/each}
         {/if}
       </div>
-      {#if navDockedPanel && dockedSnapshot}
-        <div class="docked-panel-area">
-          <div class="docked-toolbar">
-            <div class="docked-pathway-inline">
-              <span class="path-label">📌</span>
-              {#each dockedSnapshot.hierarchyPath as item, i}
-                {#if i > 0}<span class="path-sep">→</span>{/if}
-                <span class="path-item" style="color: {typeColors[item.type]}">{item.name}</span>
-              {/each}
-            </div>
-            <div class="split-presets">
-              <button class="split-btn" class:active={splitPreset === '30'} on:click={() => applySplitPreset('30')} title="30% left">30</button>
-              <button class="split-btn" class:active={splitPreset === '50'} on:click={() => applySplitPreset('50')} title="50/50 split">50</button>
-              <button class="split-btn" class:active={splitPreset === '70'} on:click={() => applySplitPreset('70')} title="70% left">70</button>
-            </div>
-            <button class="btn-dock-toggle" on:click={() => dockPanel(navDockedPanel)} title="Undock">✕</button>
-          </div>
-          <div class="docked-panel-content">
-          {#if navDockedPanel === 'properties' && entityDetails}
-            <PropertiesPanel
-              selectedNode={dockedSnapshot.selectedNode}
-              {entityDetails}
-              {entityFields}
-              {typeLabels}
-              collapsed={!showProperties}
-              hasPermission={hasPermission}
-              onToggleCollapsed={() => { showProperties = !showProperties; }}
-              onSave={handlePropertySave}
-            />
-          {:else if navDockedPanel === 'pricing'}
-            <PricingPanel
-              selectedNode={dockedSnapshot.selectedNode}
-              bind:pricingProducts
-              masterplanCount={tableData.filter(lot => lot.status?.toLowerCase() === 'masterplan' && (!lot.price || lot.price === 0)).length}
-              hasPermission={hasPermission}
-              onLog={log}
-              onApplyToMasterplan={applyPricingToMasterplanLots}
-            />
-          {:else if navDockedPanel === 'documents'}
-            <DocumentPanel
-              selectedNode={dockedSnapshot.selectedNode}
-              documents={dockedDocuments}
-              tableDataLength={tableData.length}
-              {extractingDocId}
-              {selectedModel}
-              hasPermission={hasPermission}
-              onUpload={async (file, docType) => { await handleDocumentUpload(file, docType); dockedDocuments = JSON.parse(JSON.stringify(documents)); }}
-              onDelete={async (docId) => { await deleteDocument(docId); dockedDocuments = dockedDocuments.filter(d => d.id !== docId); }}
-              onExtract={(docId) => extractFromDocument(docId, false)}
-              onReanalyze={(docId) => extractFromDocument(docId, true)}
-              onAnalyzePOS={analyzePlanOfSubdivision}
-              onCrossReference={crossReferenceDocument}
-              onOpenPreExtraction={openPreExtractionModal}
-              onPreview={(doc) => previewDocument = doc}
-              onView={(doc) => { dockedInlineDocument = doc; dockedInlineZoom = 1; dockedPdfPageNumber = 1; }}
-              inlineDocumentId={dockedInlineDocument?.id ?? null}
-              onModelChange={(model) => { selectedModel = model as any; }}
-            />
-            {#if dockedInlineDocument}
-              <div class="inline-viewer-section">
-                <div class="inline-viewer-header">
-                  <span>{dockedInlineDocument.mimeType === 'application/pdf' ? '📑' : '📄'} {dockedInlineDocument.originalName}</span>
-                  <div class="inline-viewer-controls">
-                    {#if dockedInlineDocument.mimeType?.startsWith('image/')}
-                      <button class="zoom-btn" on:click={() => dockedInlineZoom = Math.max(0.5, dockedInlineZoom - 0.25)}>🔍−</button>
-                      <span class="zoom-level">{Math.round(dockedInlineZoom * 100)}%</span>
-                      <button class="zoom-btn" on:click={() => dockedInlineZoom = Math.min(3, dockedInlineZoom + 0.25)}>🔍+</button>
-                      <button class="zoom-btn" on:click={() => dockedInlineZoom = 1}>Reset</button>
-                    {/if}
-                    {#if dockedInlineDocument.mimeType === 'application/pdf'}
-                      <div class="page-controls">
-                        <button class="page-btn" on:click={() => dockedPdfPageNumber = Math.max(1, dockedPdfPageNumber - 1)} title="Previous page">◀</button>
-                        <span class="page-indicator">Page {dockedPdfPageNumber}</span>
-                        <button class="page-btn" on:click={() => dockedPdfPageNumber++} title="Next page">▶</button>
-                      </div>
-                    {/if}
-                    <button class="btn-close-inline" on:click={() => dockedInlineDocument = null}>✕</button>
-                  </div>
-                </div>
-                <div class="inline-viewer-container">
-                  {#if dockedInlineDocument.mimeType === 'application/pdf'}
-                    <iframe 
-                      src="{dockedInlineDocument.filename}" 
-                      title={dockedInlineDocument.originalName}
-                      class="inline-viewer-pdf"
-                    ></iframe>
-                  {:else}
-                    <div class="inline-viewer-scroll">
-                      <img 
-                        src="{dockedInlineDocument.filename}" 
-                        alt={dockedInlineDocument.originalName} 
-                        class="inline-viewer-image"
-                        style="width: {dockedInlineZoom * 100}%;"
-                      />
-                    </div>
-                  {/if}
-                </div>
-              </div>
-            {/if}
-          {:else if navDockedPanel === 'summary'}
-            <SummaryBar
-              {tableData}
-              summary={tableSummary}
-              collapsed={!showSummary}
-              onToggleCollapsed={() => { showSummary = !showSummary; }}
-            />
-          {:else if navDockedPanel === 'landBudget'}
-            <LandBudgetPanel
-              selectedNode={dockedSnapshot.selectedNode}
-              userCanEdit={userCanEdit}
-              onLog={log}
-              onGenerateLots={generateLotsFromDensity}
-              existingLots={tableData}
-            />
-          {:else if navDockedPanel === 'forecast'}
-            <ForecastPanel
-              selectedNode={dockedSnapshot.selectedNode}
-              onLog={log}
-              onSaveNodePreference={saveNodePreference}
-              onLoadNodePreferences={loadNodePreferences}
-            />
-          {/if}
-          </div>
-        </div>
-      {/if}
-    </div>
-    
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="panel-splitter" class:active={isDraggingSplitter} on:mousedown={onSplitterMouseDown}>
-      <div class="splitter-handle"></div>
     </div>
     
     <div class="table-panel">
@@ -3278,71 +3276,701 @@
           </div>
         {/if}
         
-        {@render panelPropertiesSnippet()}
-        {@render panelPricingSnippet()}
-        {@render panelDocumentsSnippet()}
+        {#if entityDetails}
+        <PropertiesPanel
+          {selectedNode}
+          {entityDetails}
+          {entityFields}
+          {typeLabels}
+          collapsed={!showProperties}
+          hasPermission={hasPermission}
+          onToggleCollapsed={() => { showProperties = !showProperties; if (selectedNode) saveNodePreference(selectedNode.type, selectedNode.id, 'showProperties', showProperties); }}
+          onSave={handlePropertySave}
+        />
+        {/if}
+        
+        <PricingPanel
+          {selectedNode}
+          bind:pricingProducts
+          masterplanCount={tableData.filter(lot => lot.status?.toLowerCase() === 'masterplan' && (!lot.price || lot.price === 0)).length}
+          hasPermission={hasPermission}
+          onLog={log}
+          onApplyToMasterplan={applyPricingToMasterplanLots}
+        />
+        
+        <DocumentPanel
+          {selectedNode}
+          {documents}
+          tableDataLength={tableData.length}
+          {extractingDocId}
+          {selectedModel}
+          hasPermission={hasPermission}
+          onUpload={handleDocumentUpload}
+          onDelete={deleteDocument}
+          onExtract={(docId) => extractFromDocument(docId, false)}
+          onReanalyze={(docId) => extractFromDocument(docId, true)}
+          onAnalyzePOS={analyzePlanOfSubdivision}
+          onCrossReference={crossReferenceDocument}
+          onOpenPreExtraction={openPreExtractionModal}
+          onPreview={(doc) => previewDocument = doc}
+          onModelChange={(model) => { selectedModel = model as any; }}
+        />
       {/if}
       
-      {@render panelSummarySnippet()}
-      {@render panelLandBudgetSnippet()}
-      {@render panelForecastSnippet()}
-      <!-- STAGE TABLE - Separate Section -->
-      <StageTable
-        {selectedNode}
+      {#if inlineDocument}
+        <div class="inline-viewer-section">
+          <div class="inline-viewer-header">
+            <span>{inlineDocument.mimeType === 'application/pdf' ? '📑' : '📄'} {inlineDocument.originalName}</span>
+            <div class="inline-viewer-controls">
+              {#if inlineDocument.mimeType?.startsWith('image/')}
+                <button class="zoom-btn" on:click={() => inlineZoom = Math.max(0.5, inlineZoom - 0.25)}>🔍−</button>
+                <span class="zoom-level">{Math.round(inlineZoom * 100)}%</span>
+                <button class="zoom-btn" on:click={() => inlineZoom = Math.min(3, inlineZoom + 0.25)}>🔍+</button>
+                <button class="zoom-btn" on:click={() => inlineZoom = 1}>Reset</button>
+              {/if}
+              {#if inlineDocument.mimeType === 'application/pdf'}
+                <div class="page-controls">
+                  <button class="page-btn" on:click={() => pdfPageNumber = Math.max(1, pdfPageNumber - 1)} title="Previous page">◀</button>
+                  <span class="page-indicator">Page {pdfPageNumber}</span>
+                  <button class="page-btn" on:click={() => pdfPageNumber++} title="Next page">▶</button>
+                </div>
+              {/if}
+              <button 
+                class="btn-capture" 
+                on:click={captureScreen}
+                disabled={isCapturing}
+                title="Capture your screen view for AI analysis"
+              >
+                {isCapturing ? '⏳' : '📷'} {capturedImage ? 'Re-capture' : 'Capture'}
+              </button>
+              {#if capturedImage}
+                <span class="capture-indicator" title="Screen capture ready">✓</span>
+                <button class="btn-clear-capture" on:click={clearCapture} title="Clear capture">✕</button>
+              {/if}
+              <select 
+                class="model-selector" 
+                bind:value={selectedModel}
+                title="Choose AI model for extraction"
+              >
+                {#each modelOptions as model}
+                  <option value={model.id}>{model.name}</option>
+                {/each}
+              </select>
+              <button 
+                class="btn-analyze-page" 
+                on:click={analyzePageForVerification}
+                disabled={analyzingPage || (!capturedImage && inlineDocument.mimeType !== 'application/pdf')}
+                title={capturedImage ? "Analyze captured screen" : "Analyze PDF page and verify lot data"}
+              >
+                {analyzingPage ? '⏳' : '🔍'} Extract Data
+              </button>
+              <input type="range" min="150" max="500" bind:value={inlineViewerHeight} class="height-slider" title="Adjust viewer height" />
+              <button class="btn-close-inline" on:click={() => inlineDocument = null}>✕</button>
+            </div>
+          </div>
+          <div class="inline-viewer-container" style="height: {inlineViewerHeight}px;">
+            {#if inlineDocument.mimeType === 'application/pdf'}
+              <iframe 
+                src="{inlineDocument.filename}" 
+                title={inlineDocument.originalName}
+                class="inline-viewer-pdf"
+              ></iframe>
+            {:else}
+              <div class="inline-viewer-scroll">
+                <img 
+                  src="{inlineDocument.filename}" 
+                  alt={inlineDocument.originalName} 
+                  class="inline-viewer-image"
+                  style="transform: scale({inlineZoom}); transform-origin: top left;"
+                />
+              </div>
+            {/if}
+          </div>
+        </div>
+      {/if}
+      
+      <SummaryBar
         {tableData}
-        {sortedTableData}
-        {orderedFields}
-        {statusOptions}
-        {numberPresets}
-        {customFields}
-        {hiddenFields}
+        summary={tableSummary}
+        collapsed={!showSummary}
         {pricingProducts}
-        {columnWidths}
-        {sortColumn}
-        {sortDirection}
-        {selectedRows}
-        {editingId}
-        {editValues}
-        {isAdding}
-        {newRowValues}
-        {savingRow}
-        {savingAdd}
-        {deletingRow}
-        {loading}
-        {userCanEdit}
-        {userCanDelete}
-        {typeConfig}
-        {typeLabels}
-        bind:showStageTable
-        bind:showFieldsManager
-        bind:bulkEditField
-        bind:bulkEditValue
-        {log}
-        {toggleSort}
-        {startColumnResize}
-        {getColumnWidth}
-        {toggleRowSelection}
-        {toggleAllRows}
-        {clearSelection}
-        {startEdit}
-        {cancelEdit}
-        {saveEdit}
-        {startAdd}
-        {cancelAdd}
-        {saveAdd}
-        {deleteRow}
-        {applyBulkEdit}
         {calculateLotPrice}
-        {acceptIndicativePrice}
-        {formatNumber}
-        {getStatusOption}
-        {getCustomFieldValue}
-        {reloadTableData}
+        onToggleCollapsed={() => { showSummary = !showSummary; if (selectedNode) saveNodePreference(selectedNode.type, selectedNode.id, 'showSummary', showSummary); }}
+        onStartPricingReview={startPricingReview}
+        onApplyPricing={applyPricingToMasterplanLots}
       />
+      
+      <LandBudgetPanel
+        {selectedNode}
+        userCanEdit={userCanEdit}
+        onLog={log}
+      />
+      
+      <ForecastPanel
+        {selectedNode}
+        onLog={log}
+        onSaveNodePreference={saveNodePreference}
+        onLoadNodePreferences={loadNodePreferences}
+      />
+      <!-- STAGE TABLE - Separate Section -->
+      <div class="stage-table-section">
+        <div class="panel-header collapsible" on:click={() => showStageTable = !showStageTable} on:keydown={(e) => e.key === 'Enter' && (showStageTable = !showStageTable)} role="button" tabindex="0">
+          <span>├─ {showStageTable ? '▼' : '▶'} {selectedNode ? `${typeLabels[selectedNode.type]} ${selectedNode.name}` : 'Select item'} → Children {tableData.length > 0 ? `(${tableData.length})` : ''}</span>
+          <div class="panel-header-actions" on:click|stopPropagation on:keydown|stopPropagation>
+            {#if selectedNode?.type === 'stage' && tableData.length > 0}
+              {#if stageTableTab === 'main'}
+                {#if inlinePriceEditMode}
+                  <span class="edit-mode-badge">Editing Prices</span>
+                {:else}
+                  <button class="btn-edit-all-prices" on:click={startInlinePriceEdit}>
+                    💰 Edit Prices
+                  </button>
+                {/if}
+              {:else if stageTableTab === 'dates'}
+                {#if datesTabEditMode}
+                  <span class="edit-mode-badge">Editing Dates</span>
+                  <button class="btn-cancel-tab" on:click={cancelDatesTabEdit}>Cancel</button>
+                  <button class="btn-save-tab" on:click={saveDatesTabEdits}>✓ Save All</button>
+                {:else}
+                  <button class="btn-tab-action" on:click={startDatesTabEdit}>
+                    ✏️ Edit Dates
+                  </button>
+                {/if}
+              {:else if stageTableTab === 'pricing'}
+                {#if pricingTabEditMode}
+                  <span class="edit-mode-badge">Editing Pricing</span>
+                  <button class="btn-cancel-tab" on:click={cancelPricingTabEdit}>Cancel</button>
+                  <button class="btn-save-tab" on:click={savePricingTabEdits}>✓ Save All</button>
+                {:else}
+                  <button class="btn-tab-action" on:click={startPricingTabEdit}>
+                    ✏️ Edit Pricing
+                  </button>
+                {/if}
+              {/if}
+            {/if}
+            {#if selectedNode && typeConfig[selectedNode.type].childEndpoint && stageTableTab === 'main' && userCanEdit}
+              <button class="add-btn" on:click={startAdd} disabled={isAdding}>+ Add</button>
+            {/if}
+          </div>
+        </div>
+      </div>
+      
+      {#if showStageTable}
+      {#if selectedNode?.type === 'stage' && tableData.length > 0}
+        <div class="stage-table-tabs">
+          <button 
+            class="stage-tab" 
+            class:active={stageTableTab === 'main'}
+            on:click={() => stageTableTab = 'main'}
+          >
+            📋 Main
+          </button>
+          <button 
+            class="stage-tab" 
+            class:active={stageTableTab === 'dates'}
+            on:click={() => stageTableTab = 'dates'}
+          >
+            📅 Key Dates
+          </button>
+          <button 
+            class="stage-tab" 
+            class:active={stageTableTab === 'pricing'}
+            on:click={() => stageTableTab = 'pricing'}
+          >
+            💵 Pricing Details
+          </button>
+        </div>
+      {/if}
+      
+      {#if inlinePriceEditMode}
+        <div class="inline-price-edit-bar">
+          <span class="edit-info">💰 Editing prices for {tableData.length} lots</span>
+          <button 
+            class="btn-apply-all-suggested" 
+            on:click={applyAllSuggestedPrices}
+            disabled={pricingProducts.filter(p => p.basePrice > 0).length === 0}
+            title="Apply suggested pricing from matrix to all lots"
+          >
+            📊 Use All Suggested
+          </button>
+          <span class="change-count">{inlinePriceChangeCount} changes pending</span>
+          <div class="edit-actions">
+            <button class="btn-cancel-edit" on:click={cancelInlinePriceEdit}>Cancel</button>
+            <button 
+              class="btn-save-all-prices" 
+              on:click={saveAllInlinePrices} 
+              disabled={inlinePriceChangeCount === 0 || savingAllPrices}
+            >
+              {#if savingAllPrices}
+                Saving...
+              {:else}
+                ✓ Save All ({inlinePriceChangeCount})
+              {/if}
+            </button>
+          </div>
+        </div>
+      {/if}
+      
+      {#if selectedRows.size > 0}
+        <div class="bulk-edit-bar">
+          <span class="bulk-selected">{selectedRows.size} selected</span>
+          <select bind:value={bulkEditField} class="bulk-field-select">
+            <option value="">Select field...</option>
+            {#if selectedNode?.type === 'stage' && stageTableTab === 'main'}
+              <option value="streetName">Street Name</option>
+              <option value="area">Area</option>
+              <option value="frontage">Frontage</option>
+              <option value="depth">Depth</option>
+              <option value="status">Status</option>
+            {:else if selectedNode?.type === 'stage' && stageTableTab === 'dates'}
+              <option value="on_market_date">On Market Date</option>
+              <option value="sold_date">Sold Date</option>
+              <option value="exchange_date">Exchange Date</option>
+              <option value="settled_date">Settled Date</option>
+              <option value="cancelled_date">Cancelled Date</option>
+            {:else if selectedNode?.type === 'stage' && stageTableTab === 'pricing'}
+              <option value="deposit_amount">Deposit Amount</option>
+              <option value="deposit_date">Deposit Date</option>
+              <option value="rebates">Rebates</option>
+              <option value="discounts">Discounts</option>
+              <option value="price_adjustments">Price Adjustments</option>
+            {:else}
+              <option value="name">Name</option>
+              <option value="description">Description</option>
+            {/if}
+          </select>
+          {#if stageTableTab === 'dates' || (stageTableTab === 'pricing' && bulkEditField === 'deposit_date')}
+            <input type="date" bind:value={bulkEditValue} class="bulk-value-input" />
+          {:else}
+            <input type="text" bind:value={bulkEditValue} placeholder="New value..." class="bulk-value-input" />
+          {/if}
+          <button class="btn-bulk-apply" on:click={() => stageTableTab === 'main' ? applyBulkEdit() : applyBulkCustomFieldEdit()} disabled={!bulkEditField || !bulkEditValue}>
+            Apply to {selectedRows.size}
+          </button>
+          <button class="btn-bulk-clear" on:click={clearSelection}>Clear</button>
+        </div>
+      {/if}
+      
+      <div class="table-content">
+        {#if loading}
+          <div class="loading-msg">Loading...</div>
+        {:else if !selectedNode}
+          <div class="empty-msg">← Select an item from the tree</div>
+        {:else if tableData.length === 0 && !isAdding}
+          <div class="empty-msg">No children found. Click + Add to create one.</div>
+        {:else if selectedNode?.type === 'stage' && stageTableTab === 'dates'}
+          <!-- Key Dates Tab -->
+          <div class="table-scroll-wrapper">
+            <table class="data-table dates-table">
+              <thead>
+                <tr>
+                  <th class="th-checkbox">
+                    <input type="checkbox" checked={selectedRows.size === tableData.length && tableData.length > 0} on:change={toggleAllRows} title="Select all" />
+                  </th>
+                  <th class="th-id">ID</th>
+                  <th class="th-field">Lot #</th>
+                  <th class="th-field">Status</th>
+                  <th class="th-field th-date">On Market</th>
+                  <th class="th-field th-date">Sold Date</th>
+                  <th class="th-field th-date">Exchange Date</th>
+                  <th class="th-field th-date">Settled Date</th>
+                  <th class="th-field th-date">Cancelled Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each sortedTableData as row}
+                  {@const customData = row.customData ? (typeof row.customData === 'string' ? JSON.parse(row.customData) : row.customData) : {}}
+                  {@const rowEdits = datesTabEdits.get(row.id) || {}}
+                  <tr class:selected={selectedRows.has(row.id)}>
+                    <td class="checkbox-col">
+                      <input type="checkbox" checked={selectedRows.has(row.id)} on:change={() => toggleRowSelection(row.id)} />
+                    </td>
+                    <td class="id-col">{row.id}</td>
+                    <td class="field-col">{row.lotNumber || '-'}</td>
+                    <td class="field-col status-col">
+                      <span class="status-badge status-{(row.status || '').toLowerCase().replace(/\s+/g, '-')}">{row.status || '-'}</span>
+                    </td>
+                    <td class="field-col date-col">
+                      {#if datesTabEditMode}
+                        <input type="date" value={rowEdits.on_market_date || ''} on:input={(e) => { rowEdits.on_market_date = e.currentTarget.value; datesTabEdits = datesTabEdits; }} class="date-input-cell" />
+                      {:else}
+                        {@const status = getDateStatus(customData.on_market_date, customData.on_market_date_actual)}
+                        <div class="date-with-status">
+                          <span class="date-display">{customData.on_market_date || '-'}</span>
+                          {#if status !== 'none'}
+                            <button 
+                              class="date-status-badge" 
+                              style="background: {dateStatusStyles[status].bg}; color: {dateStatusStyles[status].color}; border-color: {dateStatusStyles[status].border};"
+                              title="{dateStatusStyles[status].title} - Click to {status === 'actual' ? 'revert' : 'confirm'}"
+                              on:click={() => toggleLotDateActual(row.id, 'on_market_date', customData)}
+                            >{dateStatusStyles[status].label}</button>
+                          {/if}
+                        </div>
+                      {/if}
+                    </td>
+                    <td class="field-col date-col">
+                      {#if datesTabEditMode}
+                        <input type="date" value={rowEdits.sold_date || ''} on:input={(e) => { rowEdits.sold_date = e.currentTarget.value; datesTabEdits = datesTabEdits; }} class="date-input-cell" />
+                      {:else}
+                        {@const status = getDateStatus(customData.sold_date, customData.sold_date_actual)}
+                        <div class="date-with-status">
+                          <span class="date-display">{customData.sold_date || '-'}</span>
+                          {#if status !== 'none'}
+                            <button 
+                              class="date-status-badge" 
+                              style="background: {dateStatusStyles[status].bg}; color: {dateStatusStyles[status].color}; border-color: {dateStatusStyles[status].border};"
+                              title="{dateStatusStyles[status].title} - Click to {status === 'actual' ? 'revert' : 'confirm'}"
+                              on:click={() => toggleLotDateActual(row.id, 'sold_date', customData)}
+                            >{dateStatusStyles[status].label}</button>
+                          {/if}
+                        </div>
+                      {/if}
+                    </td>
+                    <td class="field-col date-col">
+                      {#if datesTabEditMode}
+                        <input type="date" value={rowEdits.exchange_date || ''} on:input={(e) => { rowEdits.exchange_date = e.currentTarget.value; datesTabEdits = datesTabEdits; }} class="date-input-cell" />
+                      {:else}
+                        {@const status = getDateStatus(customData.exchange_date, customData.exchange_date_actual)}
+                        <div class="date-with-status">
+                          <span class="date-display">{customData.exchange_date || '-'}</span>
+                          {#if status !== 'none'}
+                            <button 
+                              class="date-status-badge" 
+                              style="background: {dateStatusStyles[status].bg}; color: {dateStatusStyles[status].color}; border-color: {dateStatusStyles[status].border};"
+                              title="{dateStatusStyles[status].title} - Click to {status === 'actual' ? 'revert' : 'confirm'}"
+                              on:click={() => toggleLotDateActual(row.id, 'exchange_date', customData)}
+                            >{dateStatusStyles[status].label}</button>
+                          {/if}
+                        </div>
+                      {/if}
+                    </td>
+                    <td class="field-col date-col">
+                      {#if datesTabEditMode}
+                        <input type="date" value={rowEdits.settled_date || ''} on:input={(e) => { rowEdits.settled_date = e.currentTarget.value; datesTabEdits = datesTabEdits; }} class="date-input-cell" />
+                      {:else}
+                        {@const status = getDateStatus(customData.settled_date, customData.settled_date_actual)}
+                        <div class="date-with-status">
+                          <span class="date-display">{customData.settled_date || '-'}</span>
+                          {#if status !== 'none'}
+                            <button 
+                              class="date-status-badge" 
+                              style="background: {dateStatusStyles[status].bg}; color: {dateStatusStyles[status].color}; border-color: {dateStatusStyles[status].border};"
+                              title="{dateStatusStyles[status].title} - Click to {status === 'actual' ? 'revert' : 'confirm'}"
+                              on:click={() => toggleLotDateActual(row.id, 'settled_date', customData)}
+                            >{dateStatusStyles[status].label}</button>
+                          {/if}
+                        </div>
+                      {/if}
+                    </td>
+                    <td class="field-col date-col">
+                      {#if datesTabEditMode}
+                        <input type="date" value={rowEdits.cancelled_date || ''} on:input={(e) => { rowEdits.cancelled_date = e.currentTarget.value; datesTabEdits = datesTabEdits; }} class="date-input-cell" />
+                      {:else}
+                        {@const status = getDateStatus(customData.cancelled_date, customData.cancelled_date_actual)}
+                        <div class="date-with-status">
+                          <span class="date-display">{customData.cancelled_date || '-'}</span>
+                          {#if status !== 'none'}
+                            <button 
+                              class="date-status-badge" 
+                              style="background: {dateStatusStyles[status].bg}; color: {dateStatusStyles[status].color}; border-color: {dateStatusStyles[status].border};"
+                              title="{dateStatusStyles[status].title} - Click to {status === 'actual' ? 'revert' : 'confirm'}"
+                              on:click={() => toggleLotDateActual(row.id, 'cancelled_date', customData)}
+                            >{dateStatusStyles[status].label}</button>
+                          {/if}
+                        </div>
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {:else if selectedNode?.type === 'stage' && stageTableTab === 'pricing'}
+          <!-- Pricing Details Tab -->
+          <div class="table-scroll-wrapper">
+            <table class="data-table pricing-details-table">
+              <thead>
+                <tr>
+                  <th class="th-checkbox">
+                    <input type="checkbox" checked={selectedRows.size === tableData.length && tableData.length > 0} on:change={toggleAllRows} title="Select all" />
+                  </th>
+                  <th class="th-id">ID</th>
+                  <th class="th-field">Lot #</th>
+                  <th class="th-field th-num">Price</th>
+                  <th class="th-field th-num">Deposit Amt</th>
+                  <th class="th-field th-date">Deposit Date</th>
+                  <th class="th-field th-num">Rebates</th>
+                  <th class="th-field th-num">Discounts</th>
+                  <th class="th-field">Price Adjustments</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each sortedTableData as row}
+                  {@const customData = row.customData ? (typeof row.customData === 'string' ? JSON.parse(row.customData) : row.customData) : {}}
+                  {@const rowEdits = pricingTabEdits.get(row.id) || {}}
+                  <tr class:selected={selectedRows.has(row.id)}>
+                    <td class="checkbox-col">
+                      <input type="checkbox" checked={selectedRows.has(row.id)} on:change={() => toggleRowSelection(row.id)} />
+                    </td>
+                    <td class="id-col">{row.id}</td>
+                    <td class="field-col">{row.lotNumber || '-'}</td>
+                    <td class="field-col num-col">{row.price ? `$${parseFloat(row.price).toLocaleString()}` : '-'}</td>
+                    <td class="field-col num-col">
+                      {#if pricingTabEditMode}
+                        <input type="text" value={rowEdits.deposit_amount || ''} on:input={(e) => { rowEdits.deposit_amount = e.currentTarget.value; pricingTabEdits = pricingTabEdits; }} class="number-input-cell" placeholder="$0" />
+                      {:else}
+                        <span class="value-display">{customData.deposit_amount || '-'}</span>
+                      {/if}
+                    </td>
+                    <td class="field-col date-col">
+                      {#if pricingTabEditMode}
+                        <input type="date" value={rowEdits.deposit_date || ''} on:input={(e) => { rowEdits.deposit_date = e.currentTarget.value; pricingTabEdits = pricingTabEdits; }} class="date-input-cell" />
+                      {:else}
+                        <span class="date-display">{customData.deposit_date || '-'}</span>
+                      {/if}
+                    </td>
+                    <td class="field-col num-col">
+                      {#if pricingTabEditMode}
+                        <input type="text" value={rowEdits.rebates || ''} on:input={(e) => { rowEdits.rebates = e.currentTarget.value; pricingTabEdits = pricingTabEdits; }} class="number-input-cell" placeholder="$0" />
+                      {:else}
+                        <span class="value-display">{customData.rebates || '-'}</span>
+                      {/if}
+                    </td>
+                    <td class="field-col num-col">
+                      {#if pricingTabEditMode}
+                        <input type="text" value={rowEdits.discounts || ''} on:input={(e) => { rowEdits.discounts = e.currentTarget.value; pricingTabEdits = pricingTabEdits; }} class="number-input-cell" placeholder="$0" />
+                      {:else}
+                        <span class="value-display">{customData.discounts || '-'}</span>
+                      {/if}
+                    </td>
+                    <td class="field-col">
+                      {#if pricingTabEditMode}
+                        <input type="text" value={rowEdits.price_adjustments || ''} on:input={(e) => { rowEdits.price_adjustments = e.currentTarget.value; pricingTabEdits = pricingTabEdits; }} class="text-input-cell" placeholder="Notes..." />
+                      {:else}
+                        <span class="value-display">{customData.price_adjustments || '-'}</span>
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {:else}
+          <div class="table-scroll-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th class="th-checkbox th-sticky-left">
+                    <input type="checkbox" checked={selectedRows.size === tableData.length && tableData.length > 0} on:change={toggleAllRows} title="Select all" />
+                  </th>
+                  <th class="th-id sortable" style="width: {getColumnWidth('id')}" on:click={() => toggleSort('id')}>
+                    <span class="th-content">ID {sortColumn === 'id' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}</span>
+                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+                    <div class="resize-handle" on:mousedown={(e) => startColumnResize(e, 'id')} role="separator" tabindex="0" aria-orientation="vertical"></div>
+                  </th>
+                  {#each orderedFields as field}
+                    <th 
+                      class="th-field sortable" 
+                      class:th-num={field.type === 'number'}
+                      class:th-status={field.type === 'status'}
+                      class:th-date={field.type === 'date'}
+                      style="width: {getColumnWidth(field.key)}"
+                      on:click={() => toggleSort(field.key)}
+                    >
+                      <span class="th-content">{field.label} {sortColumn === field.key ? (sortDirection === 'asc' ? '▲' : '▼') : ''}</span>
+                      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+                      <div class="resize-handle" on:mousedown={(e) => startColumnResize(e, field.key)} role="separator" tabindex="0" aria-orientation="vertical"></div>
+                    </th>
+                  {/each}
+                  <th class="th-actions th-sticky-right">
+                    Actions
+                    <button class="btn-fields-mgr" on:click={() => showFieldsManager = true} title="Manage Fields">⚙</button>
+                  </th>
+                </tr>
+              </thead>
+            <tbody>
+              {#if isAdding}
+                <tr class="adding-row">
+                  <td class="checkbox-col td-sticky-left"></td>
+                  <td class="id-col">--</td>
+                  {#each orderedFields as field}
+                    <td class="field-col" class:num-col={field.type === 'number'} class:status-col={field.type === 'status'} class:date-col={field.type === 'date'}>
+                      {#if field.type === 'status'}
+                        <select bind:value={newRowValues[field.key]} class="status-select">
+                          <option value="">Select...</option>
+                          {#each statusOptions as opt}
+                            <option value={opt.value}>{opt.label}</option>
+                          {/each}
+                        </select>
+                      {:else if field.type === 'date'}
+                        <input type="date" bind:value={newRowValues[field.key]} class="date-input" />
+                      {:else if field.type === 'number'}
+                        <div class="number-input-wrapper">
+                          <input type="text" bind:value={newRowValues[field.key]} placeholder={field.label} />
+                          {#if field.format === '$'}
+                            <div class="number-presets">
+                              {#each numberPresets as preset}
+                                <button type="button" class="preset-btn" on:click={() => newRowValues[field.key] = preset.value.toString()}>{preset.label}</button>
+                              {/each}
+                            </div>
+                          {/if}
+                        </div>
+                      {:else}
+                        <input type="text" bind:value={newRowValues[field.key]} placeholder={field.label} />
+                      {/if}
+                    </td>
+                  {/each}
+                  <td class="actions-col td-sticky-right">
+                    <button class="btn-save" on:click={saveAdd} disabled={savingAdd}>
+                      {savingAdd ? 'Saving...' : 'Save'}
+                    </button>
+                    <button class="btn-cancel" on:click={cancelAdd} disabled={savingAdd}>Cancel</button>
+                  </td>
+                </tr>
+              {/if}
+              {#each sortedTableData as row}
+                <tr class:editing={editingId === row.id} class:row-selected={selectedRows.has(row.id)}>
+                  <td class="checkbox-col td-sticky-left">
+                    <input type="checkbox" checked={selectedRows.has(row.id)} on:change={() => toggleRowSelection(row.id)} />
+                  </td>
+                  <td class="id-col">{row.id}</td>
+                  {#if editingId === row.id}
+                    {#each orderedFields as field}
+                      <td class="field-col" class:num-col={field.type === 'number'} class:status-col={field.type === 'status'} class:date-col={field.type === 'date'}>
+                        {#if field.type === 'status'}
+                          <select bind:value={editValues[field.key]} class="status-select">
+                            <option value="">Select...</option>
+                            {#each statusOptions as opt}
+                              <option value={opt.value}>{opt.label}</option>
+                            {/each}
+                          </select>
+                        {:else if field.type === 'date'}
+                          <input type="date" bind:value={editValues[field.key]} class="date-input" />
+                        {:else if field.key === 'price'}
+                          {@const lotFrontage = parseFloat(editValues.frontage) || parseFloat(row.frontage) || 0}
+                          {@const lotDepth = parseFloat(editValues.depth) || parseFloat(row.depth) || 0}
+                          {@const lotArea = parseFloat(editValues.area) || parseFloat(row.area) || lotFrontage * lotDepth}
+                          {@const editIndicative = lotFrontage > 0 && lotDepth > 0 ? calculateLotPrice({ frontage: lotFrontage, depth: lotDepth, area: lotArea }) : null}
+                          {@const pricedCount = pricingProducts.filter(p => p.basePrice > 0).length}
+                          <div class="price-input-wrapper">
+                            <input type="text" bind:value={editValues[field.key]} placeholder="Enter price" />
+                            {#if editIndicative && pricedCount > 0}
+                              <div class="indicative-suggestion">
+                                <button type="button" class="btn-use-indicative" on:click={() => { editValues[field.key] = editIndicative.totalPrice.toString(); log(`Lot ${row.lotNumber || row.id}: Base ${editIndicative.matchedProduct} = $${editIndicative.basePrice.toLocaleString()} + Balance $${editIndicative.balancePrice.toLocaleString()} = $${editIndicative.totalPrice.toLocaleString()} ($${editIndicative.pricePerSqm}/m²)`, 'info'); }}>
+                                  Use ${editIndicative.totalPrice.toLocaleString()}
+                                </button>
+                                <span class="base-used">Base: {editIndicative.matchedProduct}</span>
+                              </div>
+                            {:else if pricedCount === 0}
+                              <span class="no-pricing-hint">Set up Pricing Matrix first</span>
+                            {/if}
+                          </div>
+                        {:else if field.type === 'number'}
+                          <div class="number-input-wrapper">
+                            <input type="text" bind:value={editValues[field.key]} />
+                          </div>
+                        {:else}
+                          <input type="text" bind:value={editValues[field.key]} />
+                        {/if}
+                      </td>
+                    {/each}
+                    <td class="actions-col td-sticky-right">
+                      <button class="btn-save" on:click={() => saveEdit(row)} disabled={savingRow}>
+                        {savingRow ? 'Saving...' : 'Save'}
+                      </button>
+                      <button class="btn-cancel" on:click={cancelEdit} disabled={savingRow}>Cancel</button>
+                    </td>
+                  {:else}
+                    {#each orderedFields as field}
+                      <td class="field-col" class:num-col={field.type === 'number'} class:status-col={field.type === 'status'} class:date-col={field.type === 'date'} class:price-col={field.key === 'price'} class:inline-price-edit={field.key === 'price' && inlinePriceEditMode}>
+                        {#if field.key === 'price' && inlinePriceEditMode}
+                          {@const indicativePrice = calculateLotPrice(row)}
+                          {@const originalPrice = parseFloat(row.price) || 0}
+                          {@const currentEditPrice = inlinePriceEdits.has(row.id) ? (inlinePriceEdits.get(row.id) ?? 0) : originalPrice}
+                          {@const hasChanged = currentEditPrice !== originalPrice && currentEditPrice > 0}
+                          <div class="inline-price-edit-cell" class:has-change={hasChanged}>
+                            <input 
+                              type="text" 
+                              class="inline-price-input" 
+                              value={(currentEditPrice ?? 0) > 0 ? (currentEditPrice ?? 0).toLocaleString() : ''}
+                              placeholder={originalPrice > 0 ? `Current: $${originalPrice.toLocaleString()}` : 'Enter price'}
+                              on:input={(e) => updateInlinePrice(row.id, parseFloat(e.currentTarget.value.replace(/,/g, '')) || 0)}
+                            />
+                            {#if indicativePrice}
+                              <button 
+                                type="button" 
+                                class="btn-use-indicative-inline" 
+                                on:click={() => useIndicativePriceInline(row.id)}
+                                title="Base: {indicativePrice.matchedProduct}"
+                              >
+                                Use ${indicativePrice.totalPrice.toLocaleString()}
+                              </button>
+                            {/if}
+                          </div>
+                        {:else if field.key === 'price' && pricingProducts.some(p => p.basePrice > 0)}
+                          {@const indicativePrice = calculateLotPrice(row)}
+                          {#if row.price && row.price > 0}
+                            <span class="price-set">${row.price.toLocaleString()}</span>
+                          {:else if indicativePrice}
+                            <div class="indicative-price-cell">
+                              <span class="indicative-value" title="{indicativePrice.matchedProduct}: Base ${indicativePrice.basePrice.toLocaleString()} + Balance ${indicativePrice.balancePrice.toLocaleString()}">
+                                ${indicativePrice.totalPrice.toLocaleString()}
+                              </span>
+                              <button class="btn-accept-price" on:click={() => acceptIndicativePrice(row, indicativePrice.totalPrice, indicativePrice.pricePerSqm)} title="Accept this price">✓</button>
+                            </div>
+                          {:else}
+                            <span class="no-price">-</span>
+                          {/if}
+                        {:else if field.type === 'status'}
+                          {@const status = getStatusOption(row[field.key] || row.status || '')}
+                          {#if row[field.key] || row.status}
+                            <span class="status-pill" style="color: {status.color}; background: {status.bg};">
+                              {status.label}
+                            </span>
+                          {:else}
+                            <span class="no-status">-</span>
+                          {/if}
+                        {:else if field.type === 'date'}
+                          {#if row[field.key] || (field.isCustom && getCustomFieldValue(row, field.key))}
+                            {new Date(row[field.key] || getCustomFieldValue(row, field.key)).toLocaleDateString('en-AU')}
+                          {:else}
+                            -
+                          {/if}
+                        {:else if field.type === 'number'}
+                          {formatNumber(field.isCustom ? getCustomFieldValue(row, field.key) : (row[field.key] ?? row[field.key === 'lotNumber' ? 'lotNumber' : field.key]), field.format || '')}
+                        {:else}
+                          {field.isCustom ? (getCustomFieldValue(row, field.key) || '-') : (row[field.key] || row[field.key === 'lotNumber' ? 'lotNumber' : field.key] || row.name || '-')}
+                        {/if}
+                      </td>
+                    {/each}
+                    <td class="actions-col td-sticky-right">
+                      {#if userCanEdit}
+                        <button class="btn-edit" on:click={() => startEdit(row)}>Edit</button>
+                      {/if}
+                      {#if userCanDelete}
+                        <button class="btn-delete" on:click={() => deleteRow(row)} disabled={deletingRow === row.id}>
+                          {deletingRow === row.id ? '...' : 'Del'}
+                        </button>
+                      {/if}
+                      {#if !userCanEdit && !userCanDelete}
+                        <span class="view-only-badge">View Only</span>
+                      {/if}
+                    </td>
+                  {/if}
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+          </div>
+        {/if}
+      </div>
+      {/if}
       </div>
     </div>
   </div>
-
+  
   <ActivityLogPanel
     entries={activityLog}
     {extractionProgress}
@@ -4129,45 +4757,12 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   
   .tree-panel {
     width: 350px;
-    border-right: none;
+    border-right: 1px solid #3b4261;
     display: flex;
     flex-direction: column;
     min-height: 0;
-    flex-shrink: 0;
   }
-
-  .panel-splitter {
-    width: 5px;
-    cursor: col-resize;
-    background: #3b4261;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    position: relative;
-    z-index: 5;
-    transition: background 0.15s;
-  }
-
-  .panel-splitter:hover,
-  .panel-splitter.active {
-    background: #7aa2f7;
-  }
-
-  .splitter-handle {
-    width: 2px;
-    height: 28px;
-    border-radius: 1px;
-    background: rgba(255, 255, 255, 0.2);
-    transition: background 0.15s, height 0.15s;
-  }
-
-  .panel-splitter:hover .splitter-handle,
-  .panel-splitter.active .splitter-handle {
-    background: rgba(255, 255, 255, 0.6);
-    height: 44px;
-  }
-
+  
   .table-panel {
     flex: 1;
     display: flex;
@@ -4607,8 +5202,6 @@ Street names: Maple Drive, Oak Avenue, Park Road"
     border: 1px solid var(--border-color);
     border-radius: 4px;
     margin-bottom: 8px;
-    display: flex;
-    flex-direction: column;
     overflow: hidden;
   }
   
@@ -4674,8 +5267,6 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   .inline-viewer-container {
     overflow: auto;
     background: var(--input-bg);
-    position: relative;
-    min-height: 0;
   }
   
   .inline-viewer-pdf {
@@ -4687,158 +5278,13 @@ Street names: Maple Drive, Oak Avenue, Park Road"
   .inline-viewer-scroll {
     min-width: 100%;
     min-height: 100%;
-    display: inline-block;
-    cursor: grab;
-  }
-  
-  .inline-viewer-scroll:active {
-    cursor: grabbing;
   }
   
   .inline-viewer-image {
     display: block;
     max-width: none;
-    pointer-events: none;
   }
-
-  .btn-dock-toggle {
-    background: var(--bg-primary);
-    border: 1px solid var(--accent-primary);
-    color: var(--accent-primary);
-    padding: 2px 8px;
-    font-size: 10px;
-    cursor: pointer;
-    border-radius: 2px;
-  }
-
-  .btn-dock-toggle:hover {
-    background: var(--accent-primary);
-    color: var(--bg-primary);
-  }
-
-  .dockable-panel {
-    position: relative;
-  }
-
-  .dock-btn-overlay {
-    position: absolute;
-    top: 2px;
-    right: 4px;
-    z-index: 3;
-    opacity: 0.4;
-    transition: opacity 0.15s;
-  }
-
-  .dockable-panel:hover .dock-btn-overlay {
-    opacity: 1;
-  }
-
-  .tree-panel.has-docked {
-    min-width: 300px;
-  }
-
-  .tree-panel.has-docked .tree-content {
-    max-height: 200px;
-    overflow-y: auto;
-    flex-shrink: 0;
-  }
-
-  .docked-panel-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    border-top: 1px solid var(--border-color);
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .docked-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-color);
-    flex-shrink: 0;
-  }
-
-  .docked-pathway-inline {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    color: var(--text-muted);
-    overflow: hidden;
-    white-space: nowrap;
-    min-width: 0;
-  }
-
-  .docked-pathway-inline .path-sep {
-    color: var(--text-muted);
-    font-size: 8px;
-  }
-
-  .docked-pathway-inline .path-item {
-    font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .split-presets {
-    display: flex;
-    gap: 2px;
-    flex-shrink: 0;
-  }
-
-  .split-btn {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    color: var(--text-muted);
-    padding: 1px 5px;
-    font-size: 9px;
-    font-family: inherit;
-    cursor: pointer;
-    border-radius: 2px;
-    transition: all 0.15s;
-    line-height: 1.2;
-  }
-
-  .split-btn:hover {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-  }
-
-  .split-btn.active {
-    background: #7aa2f7;
-    color: #1a1b26;
-    border-color: #7aa2f7;
-  }
-
-  .docked-panel-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow: auto;
-  }
-
-  .docked-panel-area .inline-viewer-header {
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  .docked-panel-area .inline-viewer-section {
-    flex: 1;
-    min-height: 0;
-    margin-bottom: 0;
-  }
-
-  .docked-panel-area .inline-viewer-container {
-    flex: 1;
-    min-height: 0;
-  }
-
+  
   /* Bulk edit bar */
   .bulk-edit-bar {
     display: flex;
@@ -6586,10 +7032,6 @@ Street names: Maple Drive, Oak Avenue, Park Road"
       min-width: 220px;
     }
     
-    .split-presets {
-      display: none;
-    }
-    
     th, td {
       padding: 6px 8px;
       font-size: 11px;
@@ -6642,7 +7084,7 @@ Street names: Maple Drive, Oak Avenue, Park Road"
     }
     
     .tree-panel {
-      width: 100% !important;
+      width: 100%;
       max-height: none;
       border-right: none;
       border-bottom: 1px solid #3b4261;
@@ -6669,22 +7111,6 @@ Street names: Maple Drive, Oak Avenue, Park Road"
     .table-panel {
       flex: 1;
       min-height: 0;
-    }
-    
-    .panel-splitter {
-      display: none;
-    }
-    
-    .dock-btn-overlay {
-      display: none;
-    }
-    
-    .docked-panel-area {
-      max-height: 40vh;
-    }
-    
-    .docked-toolbar .split-presets {
-      display: none;
     }
     
     .hierarchy-path {
